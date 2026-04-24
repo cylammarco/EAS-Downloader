@@ -1,0 +1,918 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>EAS Query Page</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Fraunces:opsz,wght@9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --paper: #f7f4ec;
+        --surface: #fffdf8;
+        --ink: #152238;
+        --ink-soft: #394a67;
+        --line: #d7c8ad;
+        --accent: #d96b2b;
+        --accent-2: #2f7b76;
+        --danger: #b02a37;
+        --shadow: 0 26px 60px rgba(21, 34, 56, 0.12);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+      }
+
+      body {
+        font-family: "DM Sans", sans-serif;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at 10% 10%, #ffe5c7 0%, rgba(255, 229, 199, 0) 38%),
+          radial-gradient(circle at 92% 18%, #d8efe8 0%, rgba(216, 239, 232, 0) 40%),
+          linear-gradient(180deg, #f4efe3 0%, #f8f6f0 50%, #f0ebe2 100%);
+      }
+
+      .frame {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 2.6rem 1.2rem 2rem;
+      }
+
+      .hero {
+        display: grid;
+        gap: 0.6rem;
+        margin-bottom: 1.2rem;
+      }
+
+      .hero h1 {
+        margin: 0;
+        font-family: "Fraunces", serif;
+        font-size: clamp(2rem, 3vw, 2.8rem);
+        line-height: 1.1;
+      }
+
+      .hero p {
+        margin: 0;
+        color: var(--ink-soft);
+        max-width: 68ch;
+      }
+
+      .card {
+        background: var(--surface);
+        border: 1px solid rgba(215, 200, 173, 0.9);
+        border-radius: 22px;
+        box-shadow: var(--shadow);
+        padding: 1.3rem;
+        transform: translateY(8px);
+        opacity: 0;
+        animation: rise 560ms ease forwards;
+      }
+
+      @keyframes rise {
+        to {
+          transform: translateY(0);
+          opacity: 1;
+        }
+      }
+
+      form {
+        display: grid;
+        gap: 1rem;
+      }
+
+      .grid {
+        display: grid;
+        gap: 1rem;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .field {
+        display: grid;
+        gap: 0.4rem;
+      }
+
+      .field-wide {
+        grid-column: 1 / -1;
+      }
+
+      label {
+        font-weight: 700;
+        font-size: 0.95rem;
+        letter-spacing: 0.01em;
+      }
+
+      input,
+      select,
+      textarea {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 0.72rem 0.78rem;
+        font-size: 0.98rem;
+        font-family: "DM Sans", sans-serif;
+        color: var(--ink);
+        background: #fffefb;
+      }
+
+      input:focus,
+      select:focus,
+      textarea:focus {
+        outline: none;
+        border-color: var(--accent-2);
+        box-shadow: 0 0 0 3px rgba(47, 123, 118, 0.2);
+      }
+
+      textarea {
+        min-height: 160px;
+        resize: vertical;
+      }
+
+      .password-wrap {
+        display: flex;
+        gap: 0.5rem;
+      }
+
+      .password-wrap input {
+        flex: 1;
+      }
+
+      .ghost-btn,
+      .primary-btn {
+        border-radius: 999px;
+        font-weight: 700;
+        font-size: 0.95rem;
+        padding: 0.72rem 1rem;
+        border: 1px solid transparent;
+        cursor: pointer;
+        transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
+      }
+
+      .ghost-btn {
+        background: #f5f2e8;
+        border-color: #ddcfb3;
+        color: var(--ink);
+      }
+
+      .ghost-btn:hover {
+        background: #efe8d7;
+      }
+
+      .primary-btn {
+        background: linear-gradient(90deg, #cb5f27 0%, #db7a3a 60%, #e08845 100%);
+        color: #fff;
+        box-shadow: 0 12px 30px rgba(203, 95, 39, 0.28);
+      }
+
+      .primary-btn:hover {
+        transform: translateY(-1px);
+      }
+
+      .primary-btn:disabled,
+      .ghost-btn:disabled {
+        cursor: default;
+        opacity: 0.6;
+        transform: none;
+        box-shadow: none;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.7rem;
+      }
+
+      .hint {
+        margin: 0;
+        color: var(--ink-soft);
+        font-size: 0.92rem;
+      }
+
+      .hint a {
+        color: #135b87;
+        text-decoration: none;
+        border-bottom: 1px dashed rgba(19, 91, 135, 0.45);
+      }
+
+      .hint a:hover {
+        color: #0f4e74;
+        border-bottom-color: rgba(15, 78, 116, 0.8);
+      }
+
+      .mode-title {
+        margin: 0;
+        font-weight: 700;
+        font-size: 0.95rem;
+        letter-spacing: 0.01em;
+      }
+
+      .download-mode {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.6rem;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: #fffefb;
+        padding: 0.72rem 0.78rem;
+      }
+
+      .download-mode input[type="checkbox"] {
+        width: 1.05rem;
+        height: 1.05rem;
+        margin: 0.12rem 0 0;
+        accent-color: var(--accent-2);
+        flex: 0 0 auto;
+      }
+
+      .download-mode span {
+        color: var(--ink-soft);
+        font-size: 0.92rem;
+        line-height: 1.4;
+      }
+
+      .status-box {
+        margin-top: 1rem;
+        background: #fff;
+        border: 1px dashed #ccbda3;
+        border-radius: 14px;
+        padding: 0.9rem;
+        min-height: 82px;
+      }
+
+      .status-box p {
+        margin: 0;
+        white-space: pre-wrap;
+      }
+
+      .status {
+        color: #1d4f7e;
+      }
+
+      .error {
+        color: var(--danger);
+        margin-top: 0.5rem;
+      }
+
+      .command {
+        margin-top: 1rem;
+      }
+
+      pre {
+        margin: 0.4rem 0 0;
+        padding: 0.85rem;
+        background: #101a2c;
+        color: #dde8ff;
+        border-radius: 12px;
+        overflow-x: auto;
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.87rem;
+      }
+
+      .footnote {
+        margin-top: 0.9rem;
+        color: #5a6372;
+        font-size: 0.86rem;
+      }
+
+      @media (max-width: 760px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+
+        .frame {
+          padding-top: 1.4rem;
+        }
+
+        .card {
+          border-radius: 16px;
+          padding: 1rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="frame">
+      <section class="hero">
+        <h1>EAS Metadata Download Launcher</h1>
+        <p>
+          Browser version of your query workflow. Fill in credentials, select product type and product name, then
+          submit to download XML metadata with optional TGZ archive output.
+        </p>
+      </section>
+
+      <section class="card">
+        <form id="easForm">
+          <div class="grid">
+            <div class="field">
+              <label for="username">Username</label>
+              <input id="username" name="username" type="text" autocomplete="username" required />
+            </div>
+
+            <div class="field">
+              <label for="password">Password</label>
+              <div class="password-wrap">
+                <input
+                  id="password"
+                  name="password"
+                  type="password"
+                  autocomplete="current-password"
+                  required
+                />
+                <button id="togglePassword" class="ghost-btn" type="button" aria-label="Show password">
+                  Show
+                </button>
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="project">Project</label>
+              <select id="project" name="project" required>
+                <option value="TEST">TEST</option>
+                <option value="EUCLID" selected>EUCLID</option>
+                <option value="ALL">ALL</option>
+              </select>
+            </div>
+
+            <div class="field field-wide">
+              <label for="proxyUrl">Proxy Endpoint (Cloudflare Worker)</label>
+              <input
+                id="proxyUrl"
+                name="proxyUrl"
+                type="url"
+                placeholder="https://your-worker.your-subdomain.workers.dev"
+                required
+              />
+            </div>
+
+            <div class="field">
+              <label for="dataProductType">Data Product Type</label>
+              <select id="dataProductType" name="dataProductType" required>
+                <option value="LE1" selected>LE1</option>
+                <option value="SIM">SIM</option>
+                <option value="VIS">VIS</option>
+                <option value="NIR">NIR</option>
+                <option value="SIR">SIR</option>
+                <option value="EXT">EXT</option>
+                <option value="MER">MER</option>
+                <option value="PHZ">PHZ</option>
+                <option value="SPE">SPE</option>
+                <option value="SHE">SHE</option>
+                <option value="LE3">LE3</option>
+                <option value="DQC">DQC</option>
+                <option value="SOC">SOC</option>
+                <option value="Missing">Missing</option>
+              </select>
+            </div>
+
+            <div class="field">
+              <label for="dataProduct">Data Product Name (PascalCase)</label>
+              <select id="dataProduct" name="dataProduct" required></select>
+            </div>
+
+            <div class="field field-wide">
+              <p class="hint">
+                Source card:
+                <a id="dataProductDocLink" href="#" target="_blank" rel="noopener noreferrer">Open data product documentation</a>
+              </p>
+            </div>
+
+            <div class="field field-wide">
+              <label for="query">Query String</label>
+              <textarea
+                id="query"
+                name="query"
+                placeholder="Header.ProductId.ObjectId=like*EUC_MER_PPO-TILE*_SC3-PLAN-2-PPO-*-SDC-IT-RUN0-0-final_catalog-0"
+                required
+              ></textarea>
+            </div>
+          </div>
+
+          <p class="hint">The query text is appended as-is, matching the original Python script behavior.</p>
+
+          <div class="field field-wide">
+            <p class="mode-title">Download Mode</p>
+            <label class="download-mode" for="includeTgz">
+              <input id="includeTgz" name="includeTgz" type="checkbox" />
+              <span>Checked: download XML and TGZ. Unchecked: download XML only.</span>
+            </label>
+          </div>
+
+          <div class="actions">
+            <button id="submitBtn" class="primary-btn" type="submit">Run Query And Download</button>
+            <button id="commandBtn" class="ghost-btn" type="button">Build Python Command</button>
+          </div>
+        </form>
+
+        <div class="status-box" aria-live="polite">
+          <p id="statusText" class="status">Waiting for input.</p>
+          <p id="errorText" class="error"></p>
+        </div>
+
+        <div class="command">
+          <strong>Equivalent Python command</strong>
+          <pre id="commandOutput">No command generated yet.</pre>
+        </div>
+
+        <p class="footnote">
+          This page calls EAS through the configured proxy endpoint to avoid browser CORS restrictions.
+        </p>
+      </section>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+    <script src="./data-product-options.js"></script>
+    <script>
+      const BASE_EAS_URL = "https://eas-dps-rest-ops.esac.esa.int/REST?class_name=";
+      const DOC_CARD_BASE_URL = "http://st-dm.pages.euclid-sgs.uk/data-product-doc/dm10/";
+      const DATA_PRODUCT_OPTIONS = window.DATA_PRODUCT_OPTIONS || {};
+      const PROXY_STORAGE_KEY = "easProxyEndpoint";
+
+      const form = document.getElementById("easForm");
+      const submitBtn = document.getElementById("submitBtn");
+      const commandBtn = document.getElementById("commandBtn");
+      const togglePasswordBtn = document.getElementById("togglePassword");
+
+      const statusText = document.getElementById("statusText");
+      const errorText = document.getElementById("errorText");
+      const commandOutput = document.getElementById("commandOutput");
+
+      const passwordInput = document.getElementById("password");
+      const usernameInput = document.getElementById("username");
+      const projectInput = document.getElementById("project");
+      const proxyUrlInput = document.getElementById("proxyUrl");
+      const dataProductTypeInput = document.getElementById("dataProductType");
+      const dataProductInput = document.getElementById("dataProduct");
+      const dataProductDocLink = document.getElementById("dataProductDocLink");
+      const queryInput = document.getElementById("query");
+      const includeTgzInput = document.getElementById("includeTgz");
+
+      function updateStatus(message) {
+        statusText.textContent = message;
+      }
+
+      function updateError(message) {
+        errorText.textContent = message || "";
+      }
+
+      function normalizeProxyUrl(value) {
+        return String(value || "").trim().replace(/\/+$/, "");
+      }
+
+      function loadSavedProxyUrl() {
+        try {
+          const savedProxyUrl = localStorage.getItem(PROXY_STORAGE_KEY);
+          if (savedProxyUrl) {
+            proxyUrlInput.value = normalizeProxyUrl(savedProxyUrl);
+          }
+        } catch (_storageError) {
+          // Ignore localStorage failures (private mode, blocked storage, etc.)
+        }
+      }
+
+      function saveProxyUrl() {
+        try {
+          localStorage.setItem(PROXY_STORAGE_KEY, normalizeProxyUrl(proxyUrlInput.value));
+        } catch (_storageError) {
+          // Ignore localStorage failures and continue with in-memory value.
+        }
+      }
+
+      function getProxyEndpoint() {
+        const proxyEndpoint = normalizeProxyUrl(proxyUrlInput.value);
+        if (!proxyEndpoint) {
+          throw new Error("Proxy endpoint is required. Set your Cloudflare Worker URL.");
+        }
+
+        try {
+          const parsed = new URL(proxyEndpoint);
+          if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+            throw new Error("Unsupported protocol");
+          }
+        } catch (_invalidUrlError) {
+          throw new Error("Proxy endpoint must be a valid URL.");
+        }
+
+        return proxyEndpoint;
+      }
+
+      function updateDataProductDocLink() {
+        const selectedOption = dataProductInput.options[dataProductInput.selectedIndex];
+        if (!selectedOption) {
+          dataProductDocLink.href = "#";
+          dataProductDocLink.textContent = "No data product card available";
+          return;
+        }
+
+        const docPath = selectedOption.dataset.docPath || "";
+        if (!docPath) {
+          dataProductDocLink.href = "#";
+          dataProductDocLink.textContent = "No data product card available";
+          return;
+        }
+
+        const href = `${DOC_CARD_BASE_URL}${docPath}`;
+        dataProductDocLink.href = href;
+        dataProductDocLink.textContent = href;
+      }
+
+      function populateDataProductMenu() {
+        const selectedType = dataProductTypeInput.value;
+        const options = DATA_PRODUCT_OPTIONS[selectedType] || [];
+
+        dataProductInput.innerHTML = "";
+
+        if (!options.length) {
+          const option = document.createElement("option");
+          option.value = "";
+          option.textContent = "No products available";
+          dataProductInput.appendChild(option);
+          dataProductInput.disabled = true;
+          updateDataProductDocLink();
+          return;
+        }
+
+        dataProductInput.disabled = false;
+        options.forEach((item) => {
+          const option = document.createElement("option");
+          option.value = item.name;
+          option.textContent = item.name;
+          option.dataset.docPath = item.docPath;
+          dataProductInput.appendChild(option);
+        });
+
+        updateDataProductDocLink();
+      }
+
+      function delay(ms) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+      }
+
+      function encodeAuth(username, password) {
+        const value = `${username}:${password}`;
+        const bytes = new TextEncoder().encode(value);
+        let binary = "";
+        bytes.forEach((b) => {
+          binary += String.fromCharCode(b);
+        });
+        return btoa(binary);
+      }
+
+      function parseResponsePayload(text) {
+        if (!text || !text.trim()) {
+          return {};
+        }
+
+        try {
+          return JSON.parse(text);
+        } catch (_jsonError) {
+          // Some EAS responses are Python-style dict strings.
+        }
+
+        const cleaned = text
+          .trim()
+          .replace(/\bNone\b/g, "null")
+          .replace(/\bTrue\b/g, "true")
+          .replace(/\bFalse\b/g, "false")
+          .replace(/'/g, '"');
+
+        try {
+          return JSON.parse(cleaned);
+        } catch (_pyStyleError) {
+          const payload = {};
+          const urlMatch = text.match(/["']url["']\s*:\s*["']([^"']+)["']/i);
+          const statusMatch = text.match(/["']status["']\s*:\s*["']([^"']+)["']/i);
+          if (urlMatch) {
+            payload.url = urlMatch[1];
+          }
+          if (statusMatch) {
+            payload.status = statusMatch[1];
+          }
+          return payload;
+        }
+      }
+
+      async function fetchViaProxy(url, authHeaderValue, responseType) {
+        const proxyEndpoint = getProxyEndpoint();
+
+        const response = await fetch(proxyEndpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            url,
+            authHeaderValue,
+          }),
+        });
+
+        if (!response.ok) {
+          const text = await response.text();
+          const snippet = text.slice(0, 260);
+          throw new Error(`Proxy request failed (${response.status}): ${snippet || response.statusText}`);
+        }
+
+        if (responseType === "blob") {
+          return response.blob();
+        }
+
+        return response.text();
+      }
+
+      async function fetchText(url, authHeaderValue) {
+        return fetchViaProxy(url, authHeaderValue, "text");
+      }
+
+      async function fetchBlob(url, authHeaderValue) {
+        return fetchViaProxy(url, authHeaderValue, "blob");
+      }
+
+      function downloadBlob(blob, filename) {
+        const objectUrl = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = objectUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(objectUrl);
+      }
+
+      function readTarString(bytes, start, length) {
+        const segment = bytes.subarray(start, start + length);
+        let endIndex = segment.indexOf(0);
+        if (endIndex === -1) {
+          endIndex = segment.length;
+        }
+        return new TextDecoder("utf-8").decode(segment.subarray(0, endIndex)).trim();
+      }
+
+      function parseTarEntries(tarBytes) {
+        const entries = [];
+        let offset = 0;
+
+        while (offset + 512 <= tarBytes.length) {
+          const header = tarBytes.subarray(offset, offset + 512);
+          const allZeros = header.every((value) => value === 0);
+          if (allZeros) {
+            break;
+          }
+
+          const fileName = readTarString(header, 0, 100);
+          const sizeRaw = readTarString(header, 124, 12).replace(/\0/g, "").trim();
+          const size = parseInt(sizeRaw || "0", 8);
+          const typeFlag = String.fromCharCode(header[156] || 0);
+
+          offset += 512;
+
+          const safeSize = Number.isFinite(size) && size >= 0 ? size : 0;
+          const fileBytes = tarBytes.slice(offset, offset + safeSize);
+          const isRegularFile = typeFlag === "\0" || typeFlag === "0";
+
+          if (isRegularFile && fileName) {
+            entries.push({
+              name: fileName,
+              bytes: fileBytes,
+            });
+          }
+
+          offset += Math.ceil(safeSize / 512) * 512;
+        }
+
+        return entries;
+      }
+
+      function sanitizeName(name, fallbackName) {
+        const normalized = (name || fallbackName).replace(/[^a-zA-Z0-9._-]/g, "_");
+        return normalized || fallbackName;
+      }
+
+      async function extractXmlFilesFromTgz(tgzBlob) {
+        if (typeof DecompressionStream === "undefined") {
+          throw new Error("Your browser does not support TGZ extraction (missing DecompressionStream).");
+        }
+
+        const tarStream = tgzBlob.stream().pipeThrough(new DecompressionStream("gzip"));
+        const tarBuffer = await new Response(tarStream).arrayBuffer();
+        const tarBytes = new Uint8Array(tarBuffer);
+        const entries = parseTarEntries(tarBytes);
+        const decoder = new TextDecoder("utf-8");
+        const xmlFiles = [];
+
+        entries.forEach((entry, index) => {
+          const content = decoder.decode(entry.bytes);
+          const trimmed = content.trim();
+          if (!trimmed) {
+            return;
+          }
+
+          const lowerName = entry.name.toLowerCase();
+          const isXml = lowerName.endsWith(".xml") || trimmed.startsWith("<?xml") || trimmed.startsWith("<");
+          if (!isXml) {
+            return;
+          }
+
+          const rawName = entry.name.split("/").pop() || `metadata-${index + 1}.xml`;
+          const safeName = sanitizeName(rawName, `metadata-${index + 1}.xml`);
+          const fileName = safeName.toLowerCase().endsWith(".xml") ? safeName : `${safeName}.xml`;
+
+          xmlFiles.push({
+            name: fileName,
+            content,
+          });
+        });
+
+        if (!xmlFiles.length) {
+          throw new Error("No XML files were found in the TGZ archive.");
+        }
+
+        return xmlFiles;
+      }
+
+      async function buildXmlZipBlob(xmlFiles) {
+        if (typeof JSZip === "undefined") {
+          throw new Error("JSZip is not available. Cannot package XML files.");
+        }
+
+        const zip = new JSZip();
+        xmlFiles.forEach((file, index) => {
+          const fallbackName = `metadata-${index + 1}.xml`;
+          zip.file(sanitizeName(file.name, fallbackName), file.content);
+        });
+
+        return zip.generateAsync({
+          type: "blob",
+          compression: "DEFLATE",
+          compressionOptions: { level: 6 },
+        });
+      }
+
+      function shellQuote(value) {
+        return `'${String(value).replace(/'/g, `'"'"'`)}'`;
+      }
+
+      function buildCommand() {
+        const username = usernameInput.value.trim();
+        const password = passwordInput.value;
+        const project = projectInput.value;
+        const dataProduct = dataProductInput.value.trim();
+        const query = queryInput.value.trim();
+        const includeTgz = includeTgzInput.checked;
+        const outputMode = includeTgz ? "XML_AND_TGZ" : "XML_ONLY";
+
+        const command = [
+          "python download_eas_script.py",
+          `--username ${shellQuote(username || "<username>")}`,
+          `--password ${shellQuote(password || "<password>")}`,
+          `--project ${shellQuote(project)}`,
+          `--data_product ${shellQuote(dataProduct || "<data_product>")}`,
+          `--query ${shellQuote(query || "<query>")}`,
+          `--output_mode ${shellQuote(outputMode)}`,
+        ].join(" ");
+
+        commandOutput.textContent = command;
+      }
+
+      dataProductTypeInput.addEventListener("change", () => {
+        populateDataProductMenu();
+        buildCommand();
+      });
+
+      dataProductInput.addEventListener("change", () => {
+        updateDataProductDocLink();
+        buildCommand();
+      });
+
+      projectInput.addEventListener("change", buildCommand);
+      includeTgzInput.addEventListener("change", buildCommand);
+      proxyUrlInput.addEventListener("change", () => {
+        proxyUrlInput.value = normalizeProxyUrl(proxyUrlInput.value);
+        saveProxyUrl();
+      });
+
+      togglePasswordBtn.addEventListener("click", () => {
+        const show = passwordInput.type === "password";
+        passwordInput.type = show ? "text" : "password";
+        togglePasswordBtn.textContent = show ? "Hide" : "Show";
+      });
+
+      loadSavedProxyUrl();
+      populateDataProductMenu();
+      buildCommand();
+
+      commandBtn.addEventListener("click", () => {
+        buildCommand();
+        updateError("");
+        updateStatus("Equivalent Python command generated.");
+      });
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        updateError("");
+
+        const username = usernameInput.value.trim();
+        const password = passwordInput.value;
+        const project = projectInput.value;
+        const proxyEndpoint = normalizeProxyUrl(proxyUrlInput.value);
+        const dataProduct = dataProductInput.value.trim();
+        const query = queryInput.value.trim();
+        const includeTgz = includeTgzInput.checked;
+
+        if (!username || !password || !proxyEndpoint || !dataProduct || !query) {
+          updateError("Please fill in all required fields.");
+          return;
+        }
+
+        saveProxyUrl();
+
+        buildCommand();
+
+        submitBtn.disabled = true;
+        commandBtn.disabled = true;
+
+        try {
+          const auth = encodeAuth(username, password);
+          const requestUrl = `${BASE_EAS_URL}${encodeURIComponent(dataProduct)}&${query}&make_asy=True&file_format=TGZ&PROJECT=${encodeURIComponent(project)}`;
+
+          updateStatus("Submitting query via proxy...");
+          const initialText = await fetchText(requestUrl, auth);
+          const initialPayload = parseResponsePayload(initialText);
+
+          if (!initialPayload.url) {
+            throw new Error("Could not read job URL from server response.");
+          }
+
+          let jobUrl = initialPayload.url;
+          let finalUrl = initialPayload.url;
+          let attempts = 0;
+
+          updateStatus("Waiting for async job...");
+
+          while (attempts < 300) {
+            attempts += 1;
+            await delay(1000);
+
+            const pollText = await fetchText(jobUrl, auth);
+            const pollPayload = parseResponsePayload(pollText);
+            const status = pollPayload.status || "UNKNOWN";
+            finalUrl = pollPayload.url || finalUrl;
+
+            updateStatus(`Polling attempt ${attempts}: ${status}`);
+
+            if (status === "FINISHED") {
+              break;
+            }
+
+            if (status === "ERROR") {
+              throw new Error("Server reported ERROR status for the async job.");
+            }
+
+            if (pollPayload.url) {
+              jobUrl = pollPayload.url;
+            }
+          }
+
+          if (attempts >= 300) {
+            throw new Error("Polling timed out after 300 seconds.");
+          }
+
+          updateStatus("Job completed. Downloading TGZ archive...");
+          const tgzBlob = await fetchBlob(finalUrl, auth);
+
+          const safeDataProduct = dataProduct.replace(/[^a-zA-Z0-9._-]/g, "_") || "metadata";
+          const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+          const tgzOutputName = `${safeDataProduct}-${timestamp}.tgz`;
+          const xmlOutputName = `${safeDataProduct}-${timestamp}-xml.zip`;
+
+          updateStatus("Extracting XML files from TGZ...");
+          const xmlFiles = await extractXmlFilesFromTgz(tgzBlob);
+
+          updateStatus(`Packaging ${xmlFiles.length} XML file(s)...`);
+          const xmlZipBlob = await buildXmlZipBlob(xmlFiles);
+          downloadBlob(xmlZipBlob, xmlOutputName);
+
+          if (includeTgz) {
+            downloadBlob(tgzBlob, tgzOutputName);
+            updateStatus(`Done. Downloaded ${xmlOutputName} and ${tgzOutputName}`);
+          } else {
+            updateStatus(`Done. Downloaded ${xmlOutputName}`);
+          }
+        } catch (error) {
+          updateError(error.message || String(error));
+          updateStatus("Request failed.");
+        } finally {
+          submitBtn.disabled = false;
+          commandBtn.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>
