@@ -315,17 +315,6 @@
               </select>
             </div>
 
-            <div class="field field-wide">
-              <label for="proxyUrl">Proxy Endpoint (Cloudflare Worker)</label>
-              <input
-                id="proxyUrl"
-                name="proxyUrl"
-                type="url"
-                placeholder="https://eas-downloader-proxy.cylammarco.workers.dev"
-                required
-              />
-            </div>
-
             <div class="field">
               <label for="dataProductType">Data Product Type</label>
               <select id="dataProductType" name="dataProductType" required>
@@ -388,7 +377,7 @@
         </div>
 
         <p class="footnote">
-          This page calls EAS through the configured proxy endpoint to avoid browser CORS restrictions.
+          This page calls EAS through the fixed proxy endpoint https://eas-downloader-proxy.cylammarco.workers.dev to avoid browser CORS restrictions.
         </p>
       </section>
     </main>
@@ -398,11 +387,14 @@
     <script>
       const EAS_REST_ORIGIN = "https://eas-dps-rest-ops.esac.esa.int";
       const EAS_REST_BASE_URL = `${EAS_REST_ORIGIN}/REST`;
+      const EAS_REST_CANONICAL_HOST = "eas-dps-rest-ops.esac.esa.int";
+      const EAS_REST_NODE_HOST_RE = /^eas-dps-rest-ops-node\d+\.esac\.esa\.int$/i;
       const DOC_CARD_BASE_URL = "http://st-dm.pages.euclid-sgs.uk/data-product-doc/dm10/";
       const DATA_PRODUCT_OPTIONS = window.DATA_PRODUCT_OPTIONS || {};
-      const PROXY_STORAGE_KEY = "easProxyEndpoint";
-      const DEFAULT_PROXY_ENDPOINT = "https://eas-downloader-proxy.cylammarco.workers.dev";
-      const LEGACY_FRONTEND_ENDPOINT = "https://eas-downloader.cylammarco.workers.dev";
+      const PROXY_ENDPOINT = "https://eas-downloader-proxy.cylammarco.workers.dev";
+      const POLL_INTERVAL_MS = 10000;
+      const MAX_POLL_ATTEMPTS = 300;
+      const POLL_TIMEOUT_SECONDS = Math.floor((POLL_INTERVAL_MS * MAX_POLL_ATTEMPTS) / 1000);
 
       const form = document.getElementById("easForm");
       const submitBtn = document.getElementById("submitBtn");
@@ -416,7 +408,6 @@
       const passwordInput = document.getElementById("password");
       const usernameInput = document.getElementById("username");
       const projectInput = document.getElementById("project");
-      const proxyUrlInput = document.getElementById("proxyUrl");
       const dataProductTypeInput = document.getElementById("dataProductType");
       const dataProductInput = document.getElementById("dataProduct");
       const dataProductDocLink = document.getElementById("dataProductDocLink");
@@ -428,57 +419,6 @@
 
       function updateError(message) {
         errorText.textContent = message || "";
-      }
-
-      function normalizeProxyUrl(value) {
-        return String(value || "").trim().replace(/\/+$/, "");
-      }
-
-      function loadSavedProxyUrl() {
-        try {
-          const savedProxyUrl = localStorage.getItem(PROXY_STORAGE_KEY);
-          const normalizedSaved = normalizeProxyUrl(savedProxyUrl);
-          if (normalizedSaved && normalizedSaved !== LEGACY_FRONTEND_ENDPOINT) {
-            proxyUrlInput.value = normalizedSaved;
-            return;
-          }
-
-          proxyUrlInput.value = DEFAULT_PROXY_ENDPOINT;
-          localStorage.setItem(PROXY_STORAGE_KEY, DEFAULT_PROXY_ENDPOINT);
-        } catch (_storageError) {
-          // Ignore localStorage failures (private mode, blocked storage, etc.)
-          proxyUrlInput.value = DEFAULT_PROXY_ENDPOINT;
-        }
-      }
-
-      function saveProxyUrl() {
-        try {
-          localStorage.setItem(PROXY_STORAGE_KEY, normalizeProxyUrl(proxyUrlInput.value));
-        } catch (_storageError) {
-          // Ignore localStorage failures and continue with in-memory value.
-        }
-      }
-
-      function getProxyEndpoint() {
-        const proxyEndpoint = normalizeProxyUrl(proxyUrlInput.value);
-        if (!proxyEndpoint) {
-          throw new Error("Proxy endpoint is required. Set your Cloudflare Worker URL.");
-        }
-
-        if (proxyEndpoint === LEGACY_FRONTEND_ENDPOINT) {
-          throw new Error("Use https://eas-downloader-proxy.cylammarco.workers.dev as Proxy Endpoint (not the frontend workers.dev URL).");
-        }
-
-        try {
-          const parsed = new URL(proxyEndpoint);
-          if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-            throw new Error("Unsupported protocol");
-          }
-        } catch (_invalidUrlError) {
-          throw new Error("Proxy endpoint must be a valid URL.");
-        }
-
-        return proxyEndpoint;
       }
 
       function updateDataProductDocLink() {
@@ -677,23 +617,58 @@
         return targetUrl.toString();
       }
 
-      async function fetchViaProxy(url, authHeaderValue, responseType) {
-        const proxyEndpoint = getProxyEndpoint();
-        const targetUrl = normalizeEasTargetUrl(url);
+      function buildCanonicalRestFallbackUrl(url) {
+        try {
+          const parsed = new URL(url);
+          if (!parsed.pathname.startsWith("/REST") || !EAS_REST_NODE_HOST_RE.test(parsed.hostname)) {
+            return null;
+          }
 
-        const response = await fetch(proxyEndpoint, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            url: targetUrl,
-            authHeaderValue,
-          }),
-        });
+          const fallback = new URL(parsed.toString());
+          fallback.protocol = "https:";
+          fallback.hostname = EAS_REST_CANONICAL_HOST;
+          fallback.port = "";
+          return fallback.toString();
+        } catch (_invalidUrlError) {
+          return null;
+        }
+      }
+
+      async function fetchViaProxy(url, authHeaderValue, responseType) {
+        const proxyEndpoint = PROXY_ENDPOINT;
+        let targetUrl = normalizeEasTargetUrl(url);
+
+        async function requestThroughProxy(requestUrl) {
+          return fetch(proxyEndpoint, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              url: requestUrl,
+              authHeaderValue,
+            }),
+          });
+        }
+
+        let response = await requestThroughProxy(targetUrl);
+        let responseText = response.ok ? "" : await response.text();
+
+        if (!response.ok && response.status === 403 && /target url not allowed/i.test(responseText)) {
+          const fallbackUrl = buildCanonicalRestFallbackUrl(targetUrl);
+          if (fallbackUrl && fallbackUrl !== targetUrl) {
+            console.warn("Proxy blocked EAS node host URL; retrying via canonical EAS REST host", {
+              originalTargetUrl: targetUrl,
+              fallbackUrl,
+            });
+            targetUrl = fallbackUrl;
+            response = await requestThroughProxy(targetUrl);
+            responseText = response.ok ? "" : await response.text();
+          }
+        }
 
         if (!response.ok) {
-          const text = await response.text();
+          const text = responseText;
           const snippet = text.slice(0, 260);
 
           if (response.status === 403 && /origin not allowed/i.test(text)) {
@@ -704,6 +679,12 @@
 
           if (response.status === 401 && /ORA-01017/i.test(text)) {
             throw new Error("EAS authentication failed (invalid username/password). Check your EAS credentials.");
+          }
+
+          if (response.status === 403 && /target url not allowed/i.test(text)) {
+            throw new Error(
+              `Proxy target URL allowlist blocked ${targetUrl}. Add this host to Worker allowlist (or wildcard for EAS node hosts: eas-dps-rest-ops-node*.esac.esa.int).`
+            );
           }
 
           if (response.status === 403) {
@@ -884,10 +865,6 @@
       });
 
       projectInput.addEventListener("change", buildCommand);
-      proxyUrlInput.addEventListener("change", () => {
-        proxyUrlInput.value = normalizeProxyUrl(proxyUrlInput.value);
-        saveProxyUrl();
-      });
 
       togglePasswordBtn.addEventListener("click", () => {
         const show = passwordInput.type === "password";
@@ -895,7 +872,6 @@
         togglePasswordBtn.textContent = show ? "Hide" : "Show";
       });
 
-      loadSavedProxyUrl();
       populateDataProductMenu();
       buildCommand();
 
@@ -912,16 +888,14 @@
         const username = usernameInput.value.trim();
         const password = passwordInput.value;
         const project = projectInput.value;
-        const proxyEndpoint = normalizeProxyUrl(proxyUrlInput.value);
+        const proxyEndpoint = PROXY_ENDPOINT;
         const dataProduct = dataProductInput.value.trim();
         const query = queryInput.value.trim();
 
-        if (!username || !password || !proxyEndpoint || !dataProduct || !query) {
+        if (!username || !password || !dataProduct || !query) {
           updateError("Please fill in all required fields.");
           return;
         }
-
-        saveProxyUrl();
 
         buildCommand();
 
@@ -952,11 +926,11 @@
             initialPayload,
           });
 
-          updateStatus("Waiting for async job...");
+          updateStatus("Waiting for async job (polling every 10 seconds)...");
 
-          while (attempts < 300) {
+          while (attempts < MAX_POLL_ATTEMPTS) {
             attempts += 1;
-            await delay(1000);
+            await delay(POLL_INTERVAL_MS);
 
             const pollText = await fetchText(jobUrl, auth);
             const pollPayload = parseResponsePayload(pollText);
@@ -1015,8 +989,8 @@
             }
           }
 
-          if (attempts >= 300) {
-            throw new Error("Polling timed out after 300 seconds.");
+          if (attempts >= MAX_POLL_ATTEMPTS) {
+            throw new Error(`Polling timed out after ${POLL_TIMEOUT_SECONDS} seconds.`);
           }
 
           updateStatus("Job completed. Downloading TGZ archive...");
