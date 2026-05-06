@@ -578,6 +578,38 @@
         }
       }
 
+      function describeAsyncJobError(payload, rawText) {
+        const candidateKeys = [
+          "error",
+          "message",
+          "reason",
+          "detail",
+          "details",
+          "error_message",
+          "errorMessage",
+          "exception",
+          "traceback",
+        ];
+
+        for (const key of candidateKeys) {
+          const value = payload ? payload[key] : undefined;
+          if (typeof value === "string" && value.trim()) {
+            return `${key}: ${value.trim()}`;
+          }
+
+          if (value && typeof value === "object") {
+            try {
+              return `${key}: ${JSON.stringify(value)}`;
+            } catch (_jsonStringifyError) {
+              // Fall back to raw text snippet if object cannot be serialized.
+            }
+          }
+        }
+
+        const snippet = String(rawText || "").trim().slice(0, 400);
+        return snippet ? `response: ${snippet}` : "No additional details returned by server.";
+      }
+
       function normalizeEasTargetUrl(url) {
         const rawUrl = String(url || "").trim();
         if (!rawUrl) {
@@ -932,7 +964,14 @@
             }
 
             if (status === "ERROR") {
-              throw new Error("Server reported ERROR status for the async job.");
+              const asyncErrorDetail = describeAsyncJobError(pollPayload, pollText);
+              console.error("EAS async job reported ERROR status", {
+                attempts,
+                jobUrl,
+                pollPayload,
+                pollTextSnippet: String(pollText || "").slice(0, 800),
+              });
+              throw new Error(`Server reported ERROR status for the async job. ${asyncErrorDetail}`);
             }
           }
 
@@ -957,6 +996,12 @@
           downloadBlob(tgzBlob, tgzOutputName);
           updateStatus(`Done. Downloaded ${xmlOutputName} and ${tgzOutputName}`);
         } catch (error) {
+          console.error("EAS query request failed", {
+            error,
+            proxyEndpoint,
+            project,
+            dataProduct,
+          });
           updateError(error.message || String(error));
           updateStatus("Request failed.");
         } finally {
