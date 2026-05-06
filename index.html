@@ -398,7 +398,6 @@
     <script>
       const EAS_REST_ORIGIN = "https://eas-dps-rest-ops.esac.esa.int";
       const EAS_REST_BASE_URL = `${EAS_REST_ORIGIN}/REST`;
-      const EAS_REST_HOST = "eas-dps-rest-ops.esac.esa.int";
       const DOC_CARD_BASE_URL = "http://st-dm.pages.euclid-sgs.uk/data-product-doc/dm10/";
       const DATA_PRODUCT_OPTIONS = window.DATA_PRODUCT_OPTIONS || {};
       const PROXY_STORAGE_KEY = "easProxyEndpoint";
@@ -618,20 +617,24 @@
 
         let parsed;
         try {
+          // Preserve absolute URLs exactly as returned by EAS/async service.
           parsed = new URL(rawUrl);
         } catch (_invalidAbsoluteUrl) {
           try {
-            parsed = new URL(rawUrl, `${EAS_REST_ORIGIN}/`);
+            // Resolve relative payloads safely:
+            // - '/REST/...' => against origin
+            // - 'REST?...'  => normalize to '/REST?...'
+            // - bare job id => '/REST/<job_id>'
+            if (rawUrl.startsWith("/")) {
+              parsed = new URL(rawUrl, `${EAS_REST_ORIGIN}/`);
+            } else if (rawUrl.startsWith("REST")) {
+              parsed = new URL(`/${rawUrl}`, `${EAS_REST_ORIGIN}/`);
+            } else {
+              parsed = new URL(rawUrl, `${EAS_REST_BASE_URL}/`);
+            }
           } catch (_invalidRelativeUrl) {
             throw new Error(`Server response contained an invalid URL: ${rawUrl}`);
           }
-        }
-
-        // Some async payloads can point to alternate REST hosts; rewrite REST endpoints to the allowed host.
-        if (parsed.pathname.startsWith("/REST") && parsed.hostname !== EAS_REST_HOST) {
-          parsed.protocol = "https:";
-          parsed.hostname = EAS_REST_HOST;
-          parsed.port = "";
         }
 
         return parsed.toString();
@@ -940,6 +943,14 @@
           let jobUrl = normalizeEasTargetUrl(initialPayload.url);
           let finalUrl = jobUrl;
           let attempts = 0;
+          let missingJobIdRetries = 0;
+          const MAX_MISSING_JOB_RETRIES = 8;
+
+          console.info("EAS async job started", {
+            requestUrl,
+            initialJobUrl: jobUrl,
+            initialPayload,
+          });
 
           updateStatus("Waiting for async job...");
 
@@ -953,6 +964,13 @@
 
             if (pollPayload.url) {
               const normalizedPollUrl = normalizeEasTargetUrl(pollPayload.url);
+              if (normalizedPollUrl !== jobUrl) {
+                console.info("EAS async poll URL updated", {
+                  status,
+                  from: jobUrl,
+                  to: normalizedPollUrl,
+                });
+              }
               finalUrl = normalizedPollUrl;
               jobUrl = normalizedPollUrl;
             }
@@ -965,13 +983,35 @@
 
             if (status === "ERROR") {
               const asyncErrorDetail = describeAsyncJobError(pollPayload, pollText);
+
+              if (/No such job_id/i.test(asyncErrorDetail) && missingJobIdRetries < MAX_MISSING_JOB_RETRIES) {
+                missingJobIdRetries += 1;
+                const backoffMs = Math.min(1000 * missingJobIdRetries, 5000);
+                console.warn("EAS async job not yet visible, retrying poll", {
+                  missingJobIdRetries,
+                  maxRetries: MAX_MISSING_JOB_RETRIES,
+                  backoffMs,
+                  jobUrl,
+                  asyncErrorDetail,
+                });
+                updateStatus(
+                  `Polling attempt ${attempts}: ERROR (job id not ready, retry ${missingJobIdRetries}/${MAX_MISSING_JOB_RETRIES})`
+                );
+                await delay(backoffMs);
+                continue;
+              }
+
               console.error("EAS async job reported ERROR status", {
                 attempts,
                 jobUrl,
                 pollPayload,
                 pollTextSnippet: String(pollText || "").slice(0, 800),
               });
-              throw new Error(`Server reported ERROR status for the async job. ${asyncErrorDetail}`);
+              throw new Error(`Server reported ERROR status for the async job at ${jobUrl}. ${asyncErrorDetail}`);
+            }
+
+            if (missingJobIdRetries > 0) {
+              missingJobIdRetries = 0;
             }
           }
 
