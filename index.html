@@ -4,6 +4,10 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>EAS Query Page</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23152238'/%3E%3Ctext x='32' y='41' font-size='30' text-anchor='middle' fill='%23f7f4ec' font-family='Arial'%3EE%3C/text%3E%3C/svg%3E"
+    />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -365,7 +369,7 @@
             </div>
           </div>
 
-          <p class="hint">The query text is appended as-is, matching the original Python script behavior.</p>
+          <p class="hint">Use query terms as <code>key=value</code> pairs joined by <code>&amp;</code>.</p>
 
           <div class="actions">
             <button id="submitBtn" class="primary-btn" type="submit">Run Query And Download</button>
@@ -392,7 +396,9 @@
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
     <script src="./data-product-options.js"></script>
     <script>
-      const BASE_EAS_URL = "https://eas-dps-rest-ops.esac.esa.int/REST?class_name=";
+      const EAS_REST_ORIGIN = "https://eas-dps-rest-ops.esac.esa.int";
+      const EAS_REST_BASE_URL = `${EAS_REST_ORIGIN}/REST`;
+      const EAS_REST_HOST = "eas-dps-rest-ops.esac.esa.int";
       const DOC_CARD_BASE_URL = "http://st-dm.pages.euclid-sgs.uk/data-product-doc/dm10/";
       const DATA_PRODUCT_OPTIONS = window.DATA_PRODUCT_OPTIONS || {};
       const PROXY_STORAGE_KEY = "easProxyEndpoint";
@@ -572,8 +578,73 @@
         }
       }
 
+      function normalizeEasTargetUrl(url) {
+        const rawUrl = String(url || "").trim();
+        if (!rawUrl) {
+          throw new Error("Server response contained an empty URL.");
+        }
+
+        let parsed;
+        try {
+          parsed = new URL(rawUrl);
+        } catch (_invalidAbsoluteUrl) {
+          try {
+            parsed = new URL(rawUrl, `${EAS_REST_ORIGIN}/`);
+          } catch (_invalidRelativeUrl) {
+            throw new Error(`Server response contained an invalid URL: ${rawUrl}`);
+          }
+        }
+
+        // Some async payloads can point to alternate REST hosts; rewrite REST endpoints to the allowed host.
+        if (parsed.pathname.startsWith("/REST") && parsed.hostname !== EAS_REST_HOST) {
+          parsed.protocol = "https:";
+          parsed.hostname = EAS_REST_HOST;
+          parsed.port = "";
+        }
+
+        return parsed.toString();
+      }
+
+      function appendUserQuery(searchParams, rawQuery) {
+        const normalizedQuery = String(rawQuery || "").trim().replace(/^[?&]+/, "");
+        if (!normalizedQuery) {
+          return;
+        }
+
+        normalizedQuery.split("&").forEach((part) => {
+          const token = part.trim();
+          if (!token) {
+            return;
+          }
+
+          const separatorIndex = token.indexOf("=");
+          if (separatorIndex <= 0) {
+            throw new Error(`Invalid query token: ${token}. Use key=value pairs separated by &.`);
+          }
+
+          const key = token.slice(0, separatorIndex).trim();
+          const value = token.slice(separatorIndex + 1);
+          if (!key) {
+            throw new Error(`Invalid query token: ${token}. Query keys cannot be empty.`);
+          }
+
+          searchParams.append(key, value);
+        });
+      }
+
+      function buildEasRequestUrl(dataProduct, rawQuery, project) {
+        const targetUrl = new URL(EAS_REST_BASE_URL);
+        targetUrl.searchParams.set("class_name", dataProduct);
+        appendUserQuery(targetUrl.searchParams, rawQuery);
+        targetUrl.searchParams.set("make_asy", "True");
+        targetUrl.searchParams.set("file_format", "TGZ");
+        targetUrl.searchParams.set("PROJECT", project);
+        return targetUrl.toString();
+      }
+
       async function fetchViaProxy(url, authHeaderValue, responseType) {
         const proxyEndpoint = getProxyEndpoint();
+        const targetUrl = normalizeEasTargetUrl(url);
 
         const response = await fetch(proxyEndpoint, {
           method: "POST",
@@ -581,7 +652,7 @@
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            url,
+            url: targetUrl,
             authHeaderValue,
           }),
         });
@@ -592,7 +663,7 @@
 
           if (response.status === 403 && /origin not allowed/i.test(text)) {
             throw new Error(
-              `Proxy rejected this page origin (${window.location.origin}). Open this app from https://cylammarco.github.io/EAS-Downloader/ or add ${window.location.origin} to the proxy Worker allowlist.`
+              `Proxy rejected this page origin (${window.location.origin}) for target URL ${targetUrl}. Open this app from https://cylammarco.github.io/EAS-Downloader/ or add ${window.location.origin} to the proxy Worker allowlist.`
             );
           }
 
@@ -602,7 +673,7 @@
 
           if (response.status === 403) {
             throw new Error(
-              `Proxy request was forbidden (403). Check proxy origin allowlist and EAS permissions for this query/project. Origin: ${window.location.origin}. Response: ${snippet || response.statusText}`
+              `Proxy request was forbidden (403) for target URL ${targetUrl}. Check proxy target-URL allowlist and EAS permissions for this query/project. Origin: ${window.location.origin}. Response: ${snippet || response.statusText}`
             );
           }
 
@@ -824,7 +895,7 @@
 
         try {
           const auth = encodeAuth(username, password);
-          const requestUrl = `${BASE_EAS_URL}${encodeURIComponent(dataProduct)}&${query}&make_asy=True&file_format=TGZ&PROJECT=${encodeURIComponent(project)}`;
+          const requestUrl = buildEasRequestUrl(dataProduct, query, project);
 
           updateStatus("Submitting query via proxy...");
           const initialText = await fetchText(requestUrl, auth);
@@ -834,8 +905,8 @@
             throw new Error("Could not read job URL from server response.");
           }
 
-          let jobUrl = initialPayload.url;
-          let finalUrl = initialPayload.url;
+          let jobUrl = normalizeEasTargetUrl(initialPayload.url);
+          let finalUrl = jobUrl;
           let attempts = 0;
 
           updateStatus("Waiting for async job...");
@@ -847,7 +918,12 @@
             const pollText = await fetchText(jobUrl, auth);
             const pollPayload = parseResponsePayload(pollText);
             const status = pollPayload.status || "UNKNOWN";
-            finalUrl = pollPayload.url || finalUrl;
+
+            if (pollPayload.url) {
+              const normalizedPollUrl = normalizeEasTargetUrl(pollPayload.url);
+              finalUrl = normalizedPollUrl;
+              jobUrl = normalizedPollUrl;
+            }
 
             updateStatus(`Polling attempt ${attempts}: ${status}`);
 
@@ -857,10 +933,6 @@
 
             if (status === "ERROR") {
               throw new Error("Server reported ERROR status for the async job.");
-            }
-
-            if (pollPayload.url) {
-              jobUrl = pollPayload.url;
             }
           }
 
