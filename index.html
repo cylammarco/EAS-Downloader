@@ -208,37 +208,6 @@
         border-bottom-color: rgba(15, 78, 116, 0.8);
       }
 
-      .mode-title {
-        margin: 0;
-        font-weight: 700;
-        font-size: 0.95rem;
-        letter-spacing: 0.01em;
-      }
-
-      .download-mode {
-        display: flex;
-        align-items: flex-start;
-        gap: 0.6rem;
-        border: 1px solid var(--line);
-        border-radius: 12px;
-        background: #fffefb;
-        padding: 0.72rem 0.78rem;
-      }
-
-      .download-mode input[type="checkbox"] {
-        width: 1.05rem;
-        height: 1.05rem;
-        margin: 0.12rem 0 0;
-        accent-color: var(--accent-2);
-        flex: 0 0 auto;
-      }
-
-      .download-mode span {
-        color: var(--ink-soft);
-        font-size: 0.92rem;
-        line-height: 1.4;
-      }
-
       .status-box {
         margin-top: 1rem;
         background: #fff;
@@ -305,7 +274,7 @@
         <h1>EAS Metadata Download Launcher</h1>
         <p>
           Browser version of your query workflow. Fill in credentials, select product type and product name, then
-          submit to download XML metadata with optional TGZ archive output.
+          submit to download XML metadata and TGZ archive output.
         </p>
       </section>
 
@@ -398,14 +367,6 @@
 
           <p class="hint">The query text is appended as-is, matching the original Python script behavior.</p>
 
-          <div class="field field-wide">
-            <p class="mode-title">Download Mode</p>
-            <label class="download-mode" for="includeTgz">
-              <input id="includeTgz" name="includeTgz" type="checkbox" />
-              <span>Checked: download XML and TGZ. Unchecked: download XML only.</span>
-            </label>
-          </div>
-
           <div class="actions">
             <button id="submitBtn" class="primary-btn" type="submit">Run Query And Download</button>
             <button id="commandBtn" class="ghost-btn" type="button">Build Python Command</button>
@@ -455,7 +416,6 @@
       const dataProductInput = document.getElementById("dataProduct");
       const dataProductDocLink = document.getElementById("dataProductDocLink");
       const queryInput = document.getElementById("query");
-      const includeTgzInput = document.getElementById("includeTgz");
 
       function updateStatus(message) {
         statusText.textContent = message;
@@ -629,6 +589,23 @@
         if (!response.ok) {
           const text = await response.text();
           const snippet = text.slice(0, 260);
+
+          if (response.status === 403 && /origin not allowed/i.test(text)) {
+            throw new Error(
+              `Proxy rejected this page origin (${window.location.origin}). Open this app from https://cylammarco.github.io/EAS-Downloader/ or add ${window.location.origin} to the proxy Worker allowlist.`
+            );
+          }
+
+          if (response.status === 401 && /ORA-01017/i.test(text)) {
+            throw new Error("EAS authentication failed (invalid username/password). Check your EAS credentials.");
+          }
+
+          if (response.status === 403) {
+            throw new Error(
+              `Proxy request was forbidden (403). Check proxy origin allowlist and EAS permissions for this query/project. Origin: ${window.location.origin}. Response: ${snippet || response.statusText}`
+            );
+          }
+
           throw new Error(`Proxy request failed (${response.status}): ${snippet || response.statusText}`);
         }
 
@@ -777,8 +754,6 @@
         const project = projectInput.value;
         const dataProduct = dataProductInput.value.trim();
         const query = queryInput.value.trim();
-        const includeTgz = includeTgzInput.checked;
-        const outputMode = includeTgz ? "XML_AND_TGZ" : "XML_ONLY";
 
         const command = [
           "python download_eas_script.py",
@@ -787,7 +762,6 @@
           `--project ${shellQuote(project)}`,
           `--data_product ${shellQuote(dataProduct || "<data_product>")}`,
           `--query ${shellQuote(query || "<query>")}`,
-          `--output_mode ${shellQuote(outputMode)}`,
         ].join(" ");
 
         commandOutput.textContent = command;
@@ -804,7 +778,6 @@
       });
 
       projectInput.addEventListener("change", buildCommand);
-      includeTgzInput.addEventListener("change", buildCommand);
       proxyUrlInput.addEventListener("change", () => {
         proxyUrlInput.value = normalizeProxyUrl(proxyUrlInput.value);
         saveProxyUrl();
@@ -836,7 +809,6 @@
         const proxyEndpoint = normalizeProxyUrl(proxyUrlInput.value);
         const dataProduct = dataProductInput.value.trim();
         const query = queryInput.value.trim();
-        const includeTgz = includeTgzInput.checked;
 
         if (!username || !password || !proxyEndpoint || !dataProduct || !query) {
           updateError("Please fill in all required fields.");
@@ -910,13 +882,8 @@
           updateStatus(`Packaging ${xmlFiles.length} XML file(s)...`);
           const xmlZipBlob = await buildXmlZipBlob(xmlFiles);
           downloadBlob(xmlZipBlob, xmlOutputName);
-
-          if (includeTgz) {
-            downloadBlob(tgzBlob, tgzOutputName);
-            updateStatus(`Done. Downloaded ${xmlOutputName} and ${tgzOutputName}`);
-          } else {
-            updateStatus(`Done. Downloaded ${xmlOutputName}`);
-          }
+          downloadBlob(tgzBlob, tgzOutputName);
+          updateStatus(`Done. Downloaded ${xmlOutputName} and ${tgzOutputName}`);
         } catch (error) {
           updateError(error.message || String(error));
           updateStatus("Request failed.");

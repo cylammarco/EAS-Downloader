@@ -12,8 +12,7 @@ Single-page static web app version of `download_eas_script.py`.
 - Requires a `Proxy Endpoint (Cloudflare Worker)` URL in the form before running queries
 - Submits the async EAS request and polls until completion
 - Extracts XML metadata files from the returned TGZ archive
-- Downloads XML files as a zip
-- Optional checkbox mode: download XML + original TGZ
+- Downloads XML files as a zip and also downloads the original TGZ archive
 - Generates the equivalent Python command for terminal use
 
 ## Publish on GitHub Pages
