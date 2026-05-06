@@ -435,6 +435,8 @@
       const DOC_CARD_BASE_URL = "http://st-dm.pages.euclid-sgs.uk/data-product-doc/dm10/";
       const DATA_PRODUCT_OPTIONS = window.DATA_PRODUCT_OPTIONS || {};
       const PROXY_STORAGE_KEY = "easProxyEndpoint";
+      const DEFAULT_PROXY_ENDPOINT = "https://eas-downloader-proxy.cylammarco.workers.dev";
+      const LEGACY_FRONTEND_ENDPOINT = "https://eas-downloader.cylammarco.workers.dev";
 
       const form = document.getElementById("easForm");
       const submitBtn = document.getElementById("submitBtn");
@@ -470,11 +472,17 @@
       function loadSavedProxyUrl() {
         try {
           const savedProxyUrl = localStorage.getItem(PROXY_STORAGE_KEY);
-          if (savedProxyUrl) {
-            proxyUrlInput.value = normalizeProxyUrl(savedProxyUrl);
+          const normalizedSaved = normalizeProxyUrl(savedProxyUrl);
+          if (normalizedSaved && normalizedSaved !== LEGACY_FRONTEND_ENDPOINT) {
+            proxyUrlInput.value = normalizedSaved;
+            return;
           }
+
+          proxyUrlInput.value = DEFAULT_PROXY_ENDPOINT;
+          localStorage.setItem(PROXY_STORAGE_KEY, DEFAULT_PROXY_ENDPOINT);
         } catch (_storageError) {
           // Ignore localStorage failures (private mode, blocked storage, etc.)
+          proxyUrlInput.value = DEFAULT_PROXY_ENDPOINT;
         }
       }
 
@@ -490,6 +498,10 @@
         const proxyEndpoint = normalizeProxyUrl(proxyUrlInput.value);
         if (!proxyEndpoint) {
           throw new Error("Proxy endpoint is required. Set your Cloudflare Worker URL.");
+        }
+
+        if (proxyEndpoint === LEGACY_FRONTEND_ENDPOINT) {
+          throw new Error("Use https://eas-downloader-proxy.cylammarco.workers.dev as Proxy Endpoint (not the frontend workers.dev URL).");
         }
 
         try {
