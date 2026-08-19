@@ -83,6 +83,13 @@ class QueryAndDownloadUiTest(unittest.TestCase):
         self.assertIn("for (let chunkIndex = 0; chunkIndex < objectIdChunks.length; chunkIndex += 1)", query_flow)
         self.assertNotIn("Promise.all", query_flow)
 
+    def test_query_renders_returned_files_after_each_sequential_batch(self):
+        self.assertIn("let queryInProgress = false;", INDEX_HTML)
+        self.assertIn("function renderDownloadResults(session, queryComplete = true)", INDEX_HTML)
+        self.assertIn("querySession.files = Array.from(filesByUrl.values());", INDEX_HTML)
+        self.assertIn("renderDownloadResults(querySession, false);", INDEX_HTML)
+        self.assertIn("Resolving XML batches sequentially:", INDEX_HTML)
+
     def test_proxy_error_identifies_stale_deployed_worker(self):
         self.assertIn("Deployed proxy Worker blocked", INDEX_HTML)
         self.assertIn("Deploy proxy-worker.js containing that host allowlist", INDEX_HTML)
@@ -115,11 +122,10 @@ class QueryAndDownloadUiTest(unittest.TestCase):
         self.assertIn("buildObjectXmlExportUrl(querySession.dataProduct, file.objectId, querySession.project)", INDEX_HTML)
         self.assertIn("const outputName = `${safeDataProduct}-${timestamp}-xml.zip`;", INDEX_HTML)
 
-    def test_selected_xml_download_uses_a_bounded_six_request_pool(self):
-        self.assertIn("const XML_DOWNLOAD_CONCURRENCY = 6;", INDEX_HTML)
-        self.assertIn("async function mapWithConcurrency(items, concurrency, mapper)", INDEX_HTML)
-        self.assertIn("await mapWithConcurrency(selectedProducts, XML_DOWNLOAD_CONCURRENCY", INDEX_HTML)
-        self.assertIn("return { file, index, xmlBlob };", INDEX_HTML)
+    def test_selected_xml_download_is_sequential(self):
+        self.assertIn("for (const [index, file] of selectedProducts.entries())", INDEX_HTML)
+        self.assertNotIn("XML_DOWNLOAD_CONCURRENCY", INDEX_HTML)
+        self.assertNotIn("async function mapWithConcurrency", INDEX_HTML)
 
 
 if __name__ == "__main__":

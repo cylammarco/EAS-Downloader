@@ -25,15 +25,15 @@ rows, using `mainpref_numrows=Maximum Number of Files`. The Worker then resolves
 and concatenates `FileName` values in groups of **Query Chunk Size**. It does not issue an unbounded REST product-ID
 query before applying the maximum, and it does not create a browser-to-Worker request for every EAS poll.
 Set **Query Chunk Size** to control products per Worker batch; default: `100`. Batches are internally limited to `48`
-products, leaving headroom below Cloudflare Free's 50-subrequest limit. The Worker resolves up to six EAS XML exports
-at once; browser batches remain serial to limit EAS load.
+products, leaving headroom below Cloudflare Free's 50-subrequest limit. The Worker resolves EAS XML exports one at a
+time; browser batches are also serial. Returned DSS links appear in the page after every finished batch.
 Set **Maximum Number of Files** to control the server-side DbView row request; default: `1000`.
 Leave **Query String** empty to match all products of selected data-product class, akin to SQL `SELECT *`. The launcher
 adds EAS filter `Header.ProductId.LimitedString!=""`, required because EAS rejects an empty search statement.
 
 Result links are DSS file URLs. **Download Selected** fetches selected DSS files through the configured proxy and creates
-one zip. **Download Selected XML** fetches up to six EAS `/XML` exports at once for selected products and creates a
-separate XML zip. The deployed proxy must allow `euclidsoc.esac.esa.int` and forward `Pragma: DSSGET` for DSS requests.
+one zip. **Download Selected XML** fetches EAS `/XML` exports one at a time for selected products and creates a separate
+XML zip. The deployed proxy must allow `euclidsoc.esac.esa.int` and forward `Pragma: DSSGET` for DSS requests.
 It must also allow `eas-dps-cus-ops.esac.esa.int` for server-limited DbView and XML-export queries. **Stop Query**
 aborts browser requests. XML export does not submit background EAS jobs.
 

@@ -24,7 +24,7 @@ const ALLOWED_HOSTS = new Set([
 const DSS_HOST = "euclidsoc.esac.esa.int";
 const CUS_HOST = "eas-dps-cus-ops.esac.esa.int";
 const MAX_OBJECTS_PER_PROXY_CHUNK = 48;
-const OBJECT_FETCH_CONCURRENCY = 6;
+const OBJECT_FETCH_CONCURRENCY = 1;
 const ALLOWED_PROJECTS = new Set(["TEST", "EUCLID", "ALL"]);
 
 function corsHeaders(request) {
