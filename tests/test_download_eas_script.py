@@ -2,6 +2,7 @@ import importlib.util
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "download_eas_script.py"
@@ -56,19 +57,64 @@ class QueryChunkingTest(unittest.TestCase):
             DOWNLOADER.saveMetaAndData(
                 [product_xml],
                 product_type="DpdVisCalibratedQuadFrame",
-                output_directory=output_directory,
+                xml_output_directory=output_directory,
             )
 
             output_file = Path(output_directory) / "DpdVisCalibratedQuadFrame__product-123.xml"
             self.assertTrue(output_file.is_file())
             self.assertEqual(output_file.read_text(), product_xml)
 
-    def test_script_exposes_xml_download_option(self):
+    def test_script_exposes_xml_data_and_both_download_options(self):
         source = MODULE_PATH.read_text()
 
-        self.assertIn('"--download_xml"', source)
+        self.assertIn('"--download"', source)
+        self.assertIn('choices=("xml", "data", "both")', source)
         self.assertIn('"--xml_output_dir"', source)
-        self.assertIn("if args.download_xml:", source)
+        self.assertIn('"--data_output_dir"', source)
+        self.assertIn('download_xml=args.download in ("xml", "both")', source)
+        self.assertIn('download_data=args.download in ("data", "both")', source)
+
+    def test_data_only_mode_downloads_dss_without_saving_xml(self):
+        product_xml = """<Product><ProductId>product-123</ProductId><FileName>data.fits</FileName></Product>"""
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            xml_directory = Path(temporary_directory) / "xml"
+            data_directory = Path(temporary_directory) / "data"
+            with patch.object(DOWNLOADER, "downloadDssFile") as download_dss_file:
+                DOWNLOADER.saveMetaAndData(
+                    [product_xml],
+                    product_type="DpdVisCalibratedQuadFrame",
+                    xml_output_directory=str(xml_directory),
+                    data_output_directory=str(data_directory),
+                    download_xml=False,
+                    download_data=True,
+                )
+
+            self.assertFalse(xml_directory.exists())
+            download_dss_file.assert_called_once_with(
+                DOWNLOADER.BASE_DSS_URL,
+                "data.fits",
+                None,
+                None,
+                str(data_directory),
+            )
+
+    def test_both_mode_saves_xml_and_downloads_dss(self):
+        product_xml = """<Product><ProductId>product-123</ProductId><FileName>data.fits</FileName></Product>"""
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            xml_directory = Path(temporary_directory) / "xml"
+            data_directory = Path(temporary_directory) / "data"
+            with patch.object(DOWNLOADER, "downloadDssFile") as download_dss_file:
+                DOWNLOADER.saveMetaAndData(
+                    [product_xml],
+                    product_type="DpdVisCalibratedQuadFrame",
+                    xml_output_directory=str(xml_directory),
+                    data_output_directory=str(data_directory),
+                    download_xml=True,
+                    download_data=True,
+                )
+
+            self.assertTrue((xml_directory / "DpdVisCalibratedQuadFrame__product-123.xml").is_file())
+            download_dss_file.assert_called_once()
 
 
 if __name__ == "__main__":

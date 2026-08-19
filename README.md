@@ -65,13 +65,15 @@ and `EAS_PASSWORD` to be set in the terminal and send `Pragma: DSSGET`. The pane
 can download those selected files again. It stays empty until a result selection exists, then updates whenever selection
 changes.
 
-The command-line Python tool can save XML metadata returned by the query:
+The command-line Python tool selects output with `--download`:
 
 ```bash
-python3 download_eas_script.py --username USER --data_product DpdVisCalibratedQuadFrame --download_xml
+python3 download_eas_script.py --username USER --data_product DpdVisCalibratedQuadFrame --download xml
 ```
 
-Use `--xml_output_dir DIRECTORY` to choose output directory; default is `eas-xml`.
+Choose `xml` for metadata XML only, `data` for DSS data files only, or `both` for both. XML output defaults to
+`eas-xml`; data output defaults to `eas-data`. Override them with `--xml_output_dir DIRECTORY` and
+`--data_output_dir DIRECTORY`.
 
 ## Publish on GitHub Pages
 

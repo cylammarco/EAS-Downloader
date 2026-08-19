@@ -229,14 +229,15 @@ def build_chunk_query(product_query, product_ids):
     return "&".join(part for part in (product_query.strip("&"), product_filter) if part)
 
 
-def downloadDssFile(base_url, fname, username=None, password=None):
+def downloadDssFile(base_url, fname, username=None, password=None, output_directory="."):
     headers = {}
     if username and password:
         headers["Authorization"] = "Basic %s" % (
             base64.b64encode(b"%s:%s" % (username.encode("utf-8"), password.encode("utf-8"))).decode("utf-8")
         )
     headers["pragma"] = "DSSGET"
-    fileurl = base_url + fname
+    os.makedirs(output_directory, exist_ok=True)
+    output_path = os.path.join(output_directory, os.path.basename(fname))
     if sslcontext:
         conn = HTTPSConnection(BASE_DSS_HOST, BASE_DSS_PORT, context=sslcontext)
     else:
@@ -248,32 +249,26 @@ def downloadDssFile(base_url, fname, username=None, password=None):
         recvheader[k.lower()] = v
     #  response = requests.get(fileurl, auth=(username, password))
     if response.status == 200:
-        if check_content_length(recvheader):
-            try:
-                total_length = get_content_length(recvheader)
-                with open(fname, "wb") as f:
-                    if total_length is None:
-                        f.write(response.content)
-                    else:
-                        dl = 0.0
-                        dlc = 0.0
-                        data = response.read(buffer_size)
-                        while data:
-                            dlc = len(data)
-                            dl = dl + dlc
-                            f.write(data)
-                            done = int(50.0 * dl / total_length)
-                            sys.stdout.write("\r[%s%s]" % ("=" * done, " " * (50 - done)))
-                            sys.stdout.flush()
-                            #            print(total_length,dlc,dl)
-                            data = response.read(buffer_size)
-                        if dl < total_length:
-                            sys.stdout.write("Wrong size for file %s - need %d, got %d\n" % (fname, total_length, dl))
-                    sys.stdout.write("\n")
-            except Exception as e:
-                if os.path.isfile(fname):
-                    os.remove(fname)
-                print("Can't write file %s - error %s" % (fname, str(e)))
+        try:
+            total_length = get_content_length(recvheader) if check_content_length(recvheader) else None
+            downloaded_length = 0
+            with open(output_path, "wb") as f:
+                data = response.read(buffer_size)
+                while data:
+                    downloaded_length += len(data)
+                    f.write(data)
+                    if total_length:
+                        done = min(50, int(50.0 * downloaded_length / total_length))
+                        sys.stdout.write("\r[%s%s]" % ("=" * done, " " * (50 - done)))
+                        sys.stdout.flush()
+                    data = response.read(buffer_size)
+            if total_length and downloaded_length < total_length:
+                sys.stdout.write("Wrong size for file %s - need %d, got %d\n" % (fname, total_length, downloaded_length))
+            sys.stdout.write("\n")
+        except Exception as e:
+            if os.path.isfile(output_path):
+                os.remove(output_path)
+            print("Can't write file %s - error %s" % (fname, str(e)))
     elif response.status == 403:
         sys.stdout.write("Wrong username or password supplied, exiting\n")
         conn.close()
@@ -294,9 +289,23 @@ def downloadDssFile(base_url, fname, username=None, password=None):
     del conn
 
 
-def saveMetaAndData(products, username=None, password=None, product_type="UNKNOWN", output_directory="."):
-    os.makedirs(output_directory, exist_ok=True)
+def saveMetaAndData(
+    products,
+    username=None,
+    password=None,
+    product_type="UNKNOWN",
+    xml_output_directory="eas-xml",
+    data_output_directory="eas-data",
+    download_xml=True,
+    download_data=False,
+):
+    if download_xml:
+        os.makedirs(xml_output_directory, exist_ok=True)
+    if download_data:
+        os.makedirs(data_output_directory, exist_ok=True)
+
     count = 0
+    downloaded_files = set()
     for p in products:
         # findProductId = etree.XPath("//ProductId")
         # findFiles = etree.XPath("//FileName")
@@ -317,19 +326,23 @@ def saveMetaAndData(products, username=None, password=None, product_type="UNKNOW
             else:
                 pid = str(count)
         pfile = ptype[0].upper() + ptype[1:] + "__" + pid + ".xml"
-        output_path = os.path.join(output_directory, pfile)
-        print("Saving " + output_path)
-        with open(output_path, "w") as f:
-            f.write(p)
+        if download_xml:
+            output_path = os.path.join(xml_output_directory, pfile)
+            print("Saving " + output_path)
+            with open(output_path, "w") as f:
+                f.write(p)
 
-        files = [f.text for f in root.findall(".//FileName")]
+        files = [f.text for f in root.findall(".//FileName") if f.text]
         for f in files:
-            continue
-            if os.path.isfile(f):
-                print("File %s already exists locally. Skipping its download" % (f))
+            if not download_data or f in downloaded_files:
+                continue
+            downloaded_files.add(f)
+            output_path = os.path.join(data_output_directory, os.path.basename(f))
+            if os.path.isfile(output_path):
+                print("File %s already exists locally. Skipping its download" % (output_path))
             else:
                 print("Start retrieving of " + f + " at " + str(datetime.datetime.now()) + " :")
-                downloadDssFile(BASE_DSS_URL, f, username, password)
+                downloadDssFile(BASE_DSS_URL, f, username, password, data_output_directory)
                 print("Finished retrieving of " + f + " at " + str(datetime.datetime.now()))
         count = count + 1
 
@@ -359,14 +372,20 @@ if __name__ == "__main__":
         help="Number of matching product IDs per EAS metadata request (default: 100)",
     )
     parser.add_argument(
-        "--download_xml",
-        action="store_true",
-        help="Save XML metadata returned for every matching product",
+        "--download",
+        choices=("xml", "data", "both"),
+        default="xml",
+        help="Output type: xml metadata only, DSS data only, or both (default: xml)",
     )
     parser.add_argument(
         "--xml_output_dir",
         default="eas-xml",
-        help="Directory for --download_xml output (default: eas-xml)",
+        help="Directory for XML output (default: eas-xml)",
+    )
+    parser.add_argument(
+        "--data_output_dir",
+        default="eas-data",
+        help="Directory for DSS data output (default: eas-data)",
     )
 
     args = parser.parse_args()
@@ -414,7 +433,13 @@ if __name__ == "__main__":
         )
         products.extend(chunk_products)
 
-    if args.download_xml:
-        saveMetaAndData(products, username, password, args.data_product, args.xml_output_dir)
-    else:
-        print("XML metadata retrieved but not saved. Add --download_xml to save XML files.")
+    saveMetaAndData(
+        products,
+        username,
+        password,
+        args.data_product,
+        args.xml_output_dir,
+        args.data_output_dir,
+        download_xml=args.download in ("xml", "both"),
+        download_data=args.download in ("data", "both"),
+    )
