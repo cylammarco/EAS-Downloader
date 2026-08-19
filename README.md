@@ -60,11 +60,10 @@ python3 -m http.server 8000
 Then open [http://localhost:8000](http://localhost:8000). Deploy the Worker after changing it; an already-deployed
 Worker keeps its previous host and origin allowlists.
 
-After query results appear, every file is selected by default. The **Selected-file download command** panel contains only
-the selected DSS file URLs. Its visible **Format** control selects Python or shell `curl`; both require `EAS_USERNAME`
-and `EAS_PASSWORD` to be set in the terminal and send `Pragma: DSSGET`. The panel explains that the generated command
-can download those selected files again. It stays empty until a result selection exists, then updates whenever selection
-changes.
+After query results appear, every file is selected by default. The **Selected-file download command** panel has visible
+**Format** (Python or shell) and **Download** (Data, XML, or Both) controls. XML commands use the selected products'
+EAS `/XML` exports; data commands use DSS URLs with `Pragma: DSSGET`. Both require `EAS_USERNAME` and `EAS_PASSWORD`.
+The command updates whenever selection or either control changes.
 
 The command-line Python tool selects output with `--download`:
 

@@ -534,6 +534,14 @@
               <button id="commandFormatShellBtn" class="format-option" type="button" aria-pressed="false" disabled>Shell</button>
             </span>
           </div>
+          <div class="command-format" role="group" aria-label="Selected file command download type">
+            <span class="command-format-label">Download</span>
+            <span class="format-toggle">
+              <button id="commandDownloadDataBtn" class="format-option is-active" type="button" aria-pressed="true" disabled>Data</button>
+              <button id="commandDownloadXmlBtn" class="format-option" type="button" aria-pressed="false" disabled>XML</button>
+              <button id="commandDownloadBothBtn" class="format-option" type="button" aria-pressed="false" disabled>Both</button>
+            </span>
+          </div>
           <p id="commandDescription" class="hint">If you would like to download these selected files again, use the Python script below.</p>
           <pre id="commandOutput">Select files to generate a download command.</pre>
           <p class="hint">All query results start selected. Command updates only when selection changes. Set EAS_USERNAME and EAS_PASSWORD in your terminal first.</p>
@@ -575,6 +583,9 @@
       const stopQueryBtn = document.getElementById("stopQueryBtn");
       const commandFormatPythonBtn = document.getElementById("commandFormatPythonBtn");
       const commandFormatShellBtn = document.getElementById("commandFormatShellBtn");
+      const commandDownloadDataBtn = document.getElementById("commandDownloadDataBtn");
+      const commandDownloadXmlBtn = document.getElementById("commandDownloadXmlBtn");
+      const commandDownloadBothBtn = document.getElementById("commandDownloadBothBtn");
       const togglePasswordBtn = document.getElementById("togglePassword");
       const downloadPanel = document.getElementById("downloadPanel");
       const downloadSummary = document.getElementById("downloadSummary");
@@ -604,6 +615,7 @@
       let queryInProgress = false;
       let activeQueryAbortController = null;
       let commandFormat = "python";
+      let commandDownloadMode = "data";
 
       function updateStatus(message) {
         statusText.textContent = message;
@@ -1089,15 +1101,69 @@
         commandFormatShellBtn.classList.toggle("is-active", !pythonSelected);
         commandFormatShellBtn.setAttribute("aria-pressed", String(!pythonSelected));
         commandFormatShellBtn.disabled = disabled;
+        const commandDownloadButtons = [
+          [commandDownloadDataBtn, "data"],
+          [commandDownloadXmlBtn, "xml"],
+          [commandDownloadBothBtn, "both"],
+        ];
+        commandDownloadButtons.forEach(([button, mode]) => {
+          const selected = commandDownloadMode === mode;
+          button.classList.toggle("is-active", selected);
+          button.setAttribute("aria-pressed", String(selected));
+          button.disabled = disabled;
+        });
+        const downloadDescription = commandDownloadMode === "data"
+          ? "selected DSS data files"
+          : commandDownloadMode === "xml"
+            ? "selected EAS XML exports"
+            : "selected DSS data files and EAS XML exports";
         commandDescription.textContent = pythonSelected
-          ? "If you would like to download these selected files again, use the Python script below."
-          : "If you would like to download these selected files again, use the shell command below.";
+          ? `If you would like to download ${downloadDescription} again, use the Python script below.`
+          : `If you would like to download ${downloadDescription} again, use the shell command below.`;
       }
 
-      function buildPythonDownloadCommand(selectedFiles) {
-        const urls = JSON.stringify(selectedFiles.map((file) => file.url), null, 2);
+      function getSelectedXmlProducts(selectedFiles = getSelectedFiles()) {
+        return Array.from(
+          new Map(
+            selectedFiles
+              .filter((file) => String(file.objectId || "").trim())
+              .map((file) => [file.objectId, file])
+          ).values()
+        );
+      }
+
+      function buildCommandDownloadEntries(selectedFiles) {
+        const entries = [];
+        const usedDataNames = new Set();
+        const usedXmlNames = new Set();
+
+        if (commandDownloadMode === "data" || commandDownloadMode === "both") {
+          selectedFiles.forEach((file, index) => {
+            entries.push({
+              url: file.url,
+              output: `data/${makeUniqueZipEntryName(file.fileName, index, usedDataNames)}`,
+              dssget: true,
+            });
+          });
+        }
+
+        if (commandDownloadMode === "xml" || commandDownloadMode === "both") {
+          getSelectedXmlProducts(selectedFiles).forEach((file, index) => {
+            entries.push({
+              url: buildObjectXmlExportUrl(querySession.dataProduct, file.objectId, querySession.project),
+              output: `xml/${makeUniqueZipEntryName(`${file.productId || file.objectId}.xml`, index, usedXmlNames)}`,
+              dssget: false,
+            });
+          });
+        }
+
+        return entries;
+      }
+
+      function buildPythonDownloadCommand(downloads) {
+        const downloadsJson = JSON.stringify(downloads, null, 2);
         return [
-          "# To download these selected files again, run this script after exporting EAS_USERNAME and EAS_PASSWORD.",
+          "# To download these selected items again, run this script after exporting EAS_USERNAME and EAS_PASSWORD.",
           "python3 - <<'PY'",
           "import base64",
           "import os",
@@ -1107,13 +1173,16 @@
           'username = os.environ["EAS_USERNAME"]',
           'password = os.environ["EAS_PASSWORD"]',
           'authorization = "Basic " + base64.b64encode(f"{username}:{password}".encode("utf-8")).decode("ascii")',
-          `urls = ${urls}`,
+          `downloads = ${downloadsJson}`,
           'output_dir = Path("eas-downloads")',
-          "output_dir.mkdir(exist_ok=True)",
           "",
-          "for url in urls:",
-          "    output_path = output_dir / url.rsplit('/', 1)[-1]",
-          '    request = Request(url, headers={"Authorization": authorization, "Pragma": "DSSGET"})',
+          "for download in downloads:",
+          '    output_path = output_dir / download["output"]',
+          "    output_path.parent.mkdir(parents=True, exist_ok=True)",
+          '    headers = {"Authorization": authorization}',
+          '    if download["dssget"]:',
+          '        headers["Pragma"] = "DSSGET"',
+          '    request = Request(download["url"], headers=headers)',
           "    with urlopen(request) as response, output_path.open(\"wb\") as output:",
           "        output.write(response.read())",
           "    print(f\"Downloaded {output_path}\")",
@@ -1121,21 +1190,27 @@
         ].join("\n");
       }
 
-      function buildShellDownloadCommand(selectedFiles) {
-        const urls = selectedFiles.map((file, index) => {
-          const continuation = index === selectedFiles.length - 1 ? "" : " \\";
-          return `  ${shellQuote(file.url)}${continuation}`;
+      function buildShellDownloadCommand(downloads) {
+        const directories = Array.from(new Set(downloads.map((download) => download.output.split("/", 1)[0])));
+        const commands = downloads.map((download) => {
+          const curlLines = [
+            "curl --fail --location \\",
+            '  --user "$EAS_USERNAME:$EAS_PASSWORD" \\',
+          ];
+          if (download.dssget) {
+            curlLines.push('  --header "Pragma: DSSGET" \\');
+          }
+          curlLines.push(`  --output ${shellQuote(download.output)} \\`);
+          curlLines.push(`  ${shellQuote(download.url)}`);
+          return curlLines.join("\n");
         });
         return [
-          "# To download these selected files again, run this command after exporting EAS_USERNAME and EAS_PASSWORD.",
+          "# To download these selected items again, run this command after exporting EAS_USERNAME and EAS_PASSWORD.",
           ': "${EAS_USERNAME:?Set EAS_USERNAME first}"',
           ': "${EAS_PASSWORD:?Set EAS_PASSWORD first}"',
-          "mkdir -p eas-downloads",
+          `mkdir -p ${directories.map((directory) => shellQuote(`eas-downloads/${directory}`)).join(" ")}`,
           "cd eas-downloads",
-          "curl --fail --location --remote-name \\",
-          '  --user "$EAS_USERNAME:$EAS_PASSWORD" \\',
-          '  --header "Pragma: DSSGET" \\',
-          ...urls,
+          ...commands,
         ].join("\n");
       }
 
@@ -1149,9 +1224,14 @@
           commandOutput.textContent = "Select at least one file to generate a download command.";
           return;
         }
+        const downloads = buildCommandDownloadEntries(selectedFiles);
+        if (!downloads.length) {
+          commandOutput.textContent = "No selected EAS XML exports are available for this command.";
+          return;
+        }
         commandOutput.textContent = commandFormat === "python"
-          ? buildPythonDownloadCommand(selectedFiles)
-          : buildShellDownloadCommand(selectedFiles);
+          ? buildPythonDownloadCommand(downloads)
+          : buildShellDownloadCommand(downloads);
       }
 
       function updateDownloadSelection() {
@@ -1583,13 +1663,7 @@
           return;
         }
 
-        const selectedProducts = Array.from(
-          new Map(
-            getSelectedFiles()
-              .filter((file) => String(file.objectId || "").trim())
-              .map((file) => [file.objectId, file])
-          ).values()
-        );
+        const selectedProducts = getSelectedXmlProducts();
         if (!selectedProducts.length) {
           updateError("Select at least one file with an EAS object ID to download XML files.");
           return;
@@ -1687,6 +1761,21 @@
 
       commandFormatShellBtn.addEventListener("click", () => {
         commandFormat = "shell";
+        updateSelectedDownloadCommand();
+      });
+
+      commandDownloadDataBtn.addEventListener("click", () => {
+        commandDownloadMode = "data";
+        updateSelectedDownloadCommand();
+      });
+
+      commandDownloadXmlBtn.addEventListener("click", () => {
+        commandDownloadMode = "xml";
+        updateSelectedDownloadCommand();
+      });
+
+      commandDownloadBothBtn.addEventListener("click", () => {
+        commandDownloadMode = "both";
         updateSelectedDownloadCommand();
       });
 
