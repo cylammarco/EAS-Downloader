@@ -67,7 +67,7 @@ class QueryAndDownloadUiTest(unittest.TestCase):
         self.assertIn('targetUrl.searchParams.set("mainpref_numrows", String(maximumFiles));', INDEX_HTML)
         self.assertIn("function extractDbViewObjectIds", INDEX_HTML)
         self.assertIn("matchAll(/object_id=([0-9A-F]+)/gi)", INDEX_HTML)
-        self.assertIn("const MAX_OBJECTS_PER_PROXY_CHUNK = 20;", INDEX_HTML)
+        self.assertIn("const MAX_OBJECTS_PER_PROXY_CHUNK = 48;", INDEX_HTML)
         self.assertIn("const objectIdChunks = chunkItems(objectIds, Math.min(queryChunkSize, MAX_OBJECTS_PER_PROXY_CHUNK));", INDEX_HTML)
         self.assertIn("const filesByUrl = new Map();", INDEX_HTML)
         self.assertIn("async function fetchObjectXmlChunk", INDEX_HTML)
@@ -80,6 +80,8 @@ class QueryAndDownloadUiTest(unittest.TestCase):
 
         self.assertNotIn("runAsyncEasRequest(", query_flow)
         self.assertNotIn("objectIdChunk.map(", query_flow)
+        self.assertIn("for (let chunkIndex = 0; chunkIndex < objectIdChunks.length; chunkIndex += 1)", query_flow)
+        self.assertNotIn("Promise.all", query_flow)
 
     def test_proxy_error_identifies_stale_deployed_worker(self):
         self.assertIn("Deployed proxy Worker blocked", INDEX_HTML)
@@ -112,6 +114,12 @@ class QueryAndDownloadUiTest(unittest.TestCase):
         self.assertIn("new Map(", INDEX_HTML)
         self.assertIn("buildObjectXmlExportUrl(querySession.dataProduct, file.objectId, querySession.project)", INDEX_HTML)
         self.assertIn("const outputName = `${safeDataProduct}-${timestamp}-xml.zip`;", INDEX_HTML)
+
+    def test_selected_xml_download_uses_a_bounded_six_request_pool(self):
+        self.assertIn("const XML_DOWNLOAD_CONCURRENCY = 6;", INDEX_HTML)
+        self.assertIn("async function mapWithConcurrency(items, concurrency, mapper)", INDEX_HTML)
+        self.assertIn("await mapWithConcurrency(selectedProducts, XML_DOWNLOAD_CONCURRENCY", INDEX_HTML)
+        self.assertIn("return { file, index, xmlBlob };", INDEX_HTML)
 
 
 if __name__ == "__main__":

@@ -22,8 +22,9 @@ class ProxyWorkerTest(unittest.TestCase):
     def test_worker_resolves_a_whole_object_chunk_in_one_browser_request(self):
         self.assertIn('payload.operation === "resolve-object-xml-chunk"', WORKER)
         self.assertIn("async function resolveObjectXmlChunk", WORKER)
-        self.assertIn("const MAX_OBJECTS_PER_PROXY_CHUNK = 20;", WORKER)
-        self.assertIn("const OBJECT_FETCH_CONCURRENCY = 5;", WORKER)
+        self.assertIn("const MAX_OBJECTS_PER_PROXY_CHUNK = 48;", WORKER)
+        self.assertIn("const OBJECT_FETCH_CONCURRENCY = 6;", WORKER)
+        self.assertIn("Object chunk must contain 1-${MAX_OBJECTS_PER_PROXY_CHUNK} object IDs", WORKER)
         self.assertIn('new URL(`https://${CUS_HOST}/XML`)', WORKER)
         self.assertIn('xmlTagValues(xmlText, "DataStorage")', WORKER)
         self.assertIn('files: fileNames.map((fileName) => ({ objectId, productId, fileName }))', WORKER)
