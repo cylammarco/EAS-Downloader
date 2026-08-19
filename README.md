@@ -1,6 +1,6 @@
 # EAS Query Page
 
-Single-page static web app version of `download_eas_script.py`.
+Single-page static web app [https://cylammarco.github.io/EAS-Downloader/](https://cylammarco.github.io/EAS-Downloader/)
 
 ## What it does
 
@@ -24,7 +24,7 @@ EAS can time out while assembling one large product query. **Run Query** asks Db
 rows, using `mainpref_numrows=Maximum Number of Files`. The Worker then resolves each selected product's EAS XML export
 and concatenates `FileName` values in groups of **Query Chunk Size**. It does not issue an unbounded REST product-ID
 query before applying the maximum, and it does not create a browser-to-Worker request for every EAS poll.
-Set **Query Chunk Size** to control products per Worker batch; default: `100`. Batches are internally limited to `48`
+Set **Query Chunk Size** to control products per Worker batch; default: `48`. Batches are internally limited to `48`
 products, leaving headroom below Cloudflare Free's 50-subrequest limit. The Worker resolves EAS XML exports one at a
 time; browser batches are also serial. Returned DSS links appear in the page after every finished batch.
 Set **Maximum Number of Files** to control the server-side DbView row request; default: `1000`.

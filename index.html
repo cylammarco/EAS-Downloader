@@ -453,7 +453,7 @@
                 type="number"
                 min="1"
                 step="1"
-                value="100"
+                value="48"
                 inputmode="numeric"
                 required
               />
@@ -485,7 +485,7 @@
               <textarea
                 id="query"
                 name="query"
-                placeholder="Leave empty to match all files, or enter Header.ProductId.ObjectId=like*EUC_MER_PPO-TILE*_SC3-PLAN-2-PPO-*-SDC-IT-RUN0-0-final_catalog-0"
+                placeholder="Leave empty to match all files, or enter, e.g., Header.DataSetRelease=DR1_R3"
               ></textarea>
             </div>
           </div>
@@ -494,7 +494,7 @@
             Leave query empty to match all files. Otherwise use <code>key=value</code> pairs joined by <code>&amp;</code>.
             EAS selects at most Maximum Number of Files matching products server-side, then resolves their file links in
             Query Chunk Size batches. Cloudflare safely subdivides batches above 48 products; XML requests remain
-            sequential. Defaults: 100 and 1000.
+            sequential. Defaults: 48 and 1000.
           </p>
 
           <div class="actions">
@@ -569,7 +569,7 @@
       const POLL_INTERVAL_MS = 1000;
       const MAX_POLL_ATTEMPTS = 3000;
       const POLL_TIMEOUT_SECONDS = Math.floor((POLL_INTERVAL_MS * MAX_POLL_ATTEMPTS) / 1000);
-      const DEFAULT_QUERY_CHUNK_SIZE = 100;
+      const DEFAULT_QUERY_CHUNK_SIZE = 48;
       const DEFAULT_MAXIMUM_FILES = 1000;
       const MAX_OBJECTS_PER_PROXY_CHUNK = 48;
       const PRODUCT_ID_FIELD = "Header.ProductId.LimitedString";
