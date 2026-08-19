@@ -5,6 +5,8 @@ import os
 import argparse
 import base64
 import ast
+import csv
+import io
 import time
 import datetime
 import tarfile
@@ -81,6 +83,8 @@ BASE_DSS_URL = "https://euclidsoc.esac.esa.int/"
 BASE_DSS_HOST = "euclidsoc.esac.esa.int"
 BASE_DSS_PORT = 443
 buffer_size = 16 * 1024
+PRODUCT_ID_FIELD = "Header.ProductId.LimitedString"
+MATCH_ALL_PRODUCT_FILTER = PRODUCT_ID_FIELD + '!=""'
 
 
 def geturl(inpstring):
@@ -117,21 +121,75 @@ def checkasyjob(url, auth):
     return url, finished
 
 
-def getMetadataXml(base_url, product_type, product_query, project, username, password):
-    product_query = base_url + product_type + "&" + product_query + "&make_asy=True&file_format=TGZ&PROJECT=" + project
-    #  print(product_query)
+def build_eas_query(base_url, product_type, product_query, project, fields=None, file_format=None):
+    query_parts = [base_url + product_type]
+    query_parts.append(product_query.strip("&") or MATCH_ALL_PRODUCT_FILTER)
+    query_parts.extend(["make_asy=True", "PROJECT=" + project])
+    if file_format:
+        query_parts.append("file_format=" + file_format)
+    if fields:
+        query_parts.append("fields=" + fields)
+    return "&".join(query_parts)
+
+
+def submit_async_query(product_query, auth):
     print("Query submitted at %s" % datetime.datetime.now())
     request = urllib.Request(product_query)
-    auth = getauthorization(username, password)
     request.add_header("Authorization", auth)
     easResponse = urllib.urlopen(request)
     jobresponse = easResponse.read().decode()
     url, jobstatus = geturl(jobresponse)
     url, finished = checkasyjob(url, auth)
     print("Job finished on server side at %s" % datetime.datetime.now())
+    if not finished:
+        raise RuntimeError("EAS async query failed")
+    return url
+
+
+def read_async_result(url, auth):
     request = urllib.Request(url)
     request.add_header("Authorization", auth)
-    easResponse = urllib.urlopen(request)
+    return urllib.urlopen(request)
+
+
+def get_product_ids(base_url, product_type, product_query, project, username, password):
+    auth = getauthorization(username, password)
+    lookup_query = build_eas_query(
+        base_url,
+        product_type,
+        product_query,
+        project,
+        fields=PRODUCT_ID_FIELD,
+    )
+    result_url = submit_async_query(lookup_query, auth)
+    result_text = read_async_result(result_url, auth).read().decode()
+    rows = list(csv.reader(io.StringIO(result_text)))
+    if rows and rows[0] and "productid" in rows[0][0].lower():
+        rows = rows[1:]
+
+    product_ids = []
+    seen = set()
+    for row in rows:
+        if not row:
+            continue
+        product_id = row[0].strip()
+        if product_id and product_id not in seen:
+            product_ids.append(product_id)
+            seen.add(product_id)
+    return product_ids
+
+
+def getMetadataXml(base_url, product_type, product_query, project, username, password):
+    metadata_query = build_eas_query(
+        base_url,
+        product_type,
+        product_query,
+        project,
+        file_format="TGZ",
+    )
+    auth = getauthorization(username, password)
+    result_url = submit_async_query(metadata_query, auth)
+    easResponse = read_async_result(result_url, auth)
     timestamp = f"{datetime.datetime.now():%Y-%m-%dT%H:%M:%S.%f}"
     output_tgz = product_type + timestamp + ".tgz"
     with open(output_tgz, "wb") as f_out:
@@ -159,6 +217,16 @@ def getMetadataXml(base_url, product_type, product_query, project, username, pas
     #  root_elem = etree.fromstring(productList)
     print("Found %d data products" % cip)
     return ret_p, output_tgz
+
+
+def chunk_product_ids(product_ids, chunk_size):
+    for index in range(0, len(product_ids), chunk_size):
+        yield product_ids[index : index + chunk_size]
+
+
+def build_chunk_query(product_query, product_ids):
+    product_filter = "%s=includes(%s)" % (PRODUCT_ID_FIELD, ",".join(product_ids))
+    return "&".join(part for part in (product_query.strip("&"), product_filter) if part)
 
 
 def downloadDssFile(base_url, fname, username=None, password=None):
@@ -278,9 +346,15 @@ if __name__ == "__main__":
     parser.add_argument("--data_product", help="Data product type name, e.g. DpdMerFinalCatalog", required=True)
     parser.add_argument(
         "--query",
-        required=True,
-        help="Product query string, e.g. \n"
+        default="",
+        help="Optional product query string. Leave empty to match all products, e.g. \n"
         "Header.ProductId.ObjectId=like*EUC_MER_PPO-TILE*_SC3-PLAN-2-PPO-*-SDC-IT-RUN0-0-final_catalog-0",
+    )
+    parser.add_argument(
+        "--query_chunk_size",
+        type=int,
+        default=100,
+        help="Number of matching product IDs per EAS metadata request (default: 100)",
     )
 
     args = parser.parse_args()
@@ -297,6 +371,35 @@ if __name__ == "__main__":
 
         password = getpass.getpass("Type password for %s: " % username)
 
-    products, output_tgz = getMetadataXml(BASE_EAS_URL, args.data_product, args.query, args.project, username, password)
+    if args.query_chunk_size < 1:
+        parser.error("--query_chunk_size must be a whole number greater than zero")
+
+    product_ids = get_product_ids(BASE_EAS_URL, args.data_product, args.query, args.project, username, password)
+    if not product_ids:
+        print("No data products found")
+        sys.exit(0)
+
+    product_id_chunks = list(chunk_product_ids(product_ids, args.query_chunk_size))
+    print(
+        "Retrieving %d data products in %d chunk(s) of up to %d product IDs"
+        % (len(product_ids), len(product_id_chunks), args.query_chunk_size)
+    )
+
+    products = []
+    for chunk_index, product_id_chunk in enumerate(product_id_chunks, start=1):
+        print(
+            "Retrieving chunk %d/%d (%d product IDs)"
+            % (chunk_index, len(product_id_chunks), len(product_id_chunk))
+        )
+        chunk_query = build_chunk_query(args.query, product_id_chunk)
+        chunk_products, _ = getMetadataXml(
+            BASE_EAS_URL,
+            args.data_product,
+            chunk_query,
+            args.project,
+            username,
+            password,
+        )
+        products.extend(chunk_products)
 
     saveMetaAndData(products, username, password, args.data_product)

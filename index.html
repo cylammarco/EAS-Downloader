@@ -239,6 +239,61 @@
         margin-top: 1rem;
       }
 
+      .download-panel {
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 1px solid var(--line);
+      }
+
+      .download-panel h2 {
+        margin: 0;
+        font-family: "Fraunces", serif;
+        font-size: 1.35rem;
+      }
+
+      .download-summary {
+        margin: 0.4rem 0 0.85rem;
+        color: var(--ink-soft);
+      }
+
+      .download-list {
+        display: grid;
+        gap: 0.5rem;
+        max-height: 360px;
+        margin-top: 0.85rem;
+        overflow: auto;
+        padding-right: 0.25rem;
+      }
+
+      .download-item {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 0.65rem;
+        padding: 0.65rem 0.75rem;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fffefb;
+      }
+
+      .download-item input {
+        width: auto;
+        margin: 0;
+      }
+
+      .download-name {
+        min-width: 0;
+        overflow-wrap: anywhere;
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.84rem;
+      }
+
+      .download-link {
+        color: #135b87;
+        font-size: 0.88rem;
+        white-space: nowrap;
+      }
+
       pre {
         margin: 0.4rem 0 0;
         padding: 0.85rem;
@@ -269,6 +324,14 @@
           border-radius: 16px;
           padding: 1rem;
         }
+
+        .download-item {
+          grid-template-columns: auto minmax(0, 1fr);
+        }
+
+        .download-link {
+          grid-column: 2;
+        }
       }
     </style>
   </head>
@@ -277,8 +340,7 @@
       <section class="hero">
         <h1>EAS Metadata Download Launcher</h1>
         <p>
-          Browser version of your query workflow. Fill in credentials, select product type and product name, then
-          submit to download XML metadata and TGZ archive output.
+          Browser version of your query workflow. Query matching data files, then choose what to download.
         </p>
       </section>
 
@@ -318,7 +380,7 @@
             <div class="field">
               <label for="dataProductType">Data Product Type</label>
               <select id="dataProductType" name="dataProductType" required>
-                <option value="LE1" selected>LE1</option>
+                <option value="LE1">LE1</option>
                 <option value="SIM">SIM</option>
                 <option value="VIS">VIS</option>
                 <option value="NIR">NIR</option>
@@ -329,7 +391,7 @@
                 <option value="SPE">SPE</option>
                 <option value="SHE">SHE</option>
                 <option value="LE3">LE3</option>
-                <option value="DQC">DQC</option>
+                <option value="DQC" selected>DQC</option>
                 <option value="SOC">SOC</option>
                 <option value="Missing">Missing</option>
               </select>
@@ -338,6 +400,34 @@
             <div class="field">
               <label for="dataProduct">Data Product Name (PascalCase)</label>
               <select id="dataProduct" name="dataProduct" required></select>
+            </div>
+
+            <div class="field">
+              <label for="queryChunkSize">Query Chunk Size</label>
+              <input
+                id="queryChunkSize"
+                name="queryChunkSize"
+                type="number"
+                min="1"
+                step="1"
+                value="100"
+                inputmode="numeric"
+                required
+              />
+            </div>
+
+            <div class="field">
+              <label for="maximumFiles">Maximum Number of Files</label>
+              <input
+                id="maximumFiles"
+                name="maximumFiles"
+                type="number"
+                min="1"
+                step="1"
+                value="1000"
+                inputmode="numeric"
+                required
+              />
             </div>
 
             <div class="field field-wide">
@@ -352,16 +442,20 @@
               <textarea
                 id="query"
                 name="query"
-                placeholder="Header.ProductId.ObjectId=like*EUC_MER_PPO-TILE*_SC3-PLAN-2-PPO-*-SDC-IT-RUN0-0-final_catalog-0"
-                required
+                placeholder="Leave empty to match all files, or enter Header.ProductId.ObjectId=like*EUC_MER_PPO-TILE*_SC3-PLAN-2-PPO-*-SDC-IT-RUN0-0-final_catalog-0"
               ></textarea>
             </div>
           </div>
 
-          <p class="hint">Use query terms as <code>key=value</code> pairs joined by <code>&amp;</code>.</p>
+          <p class="hint">
+            Leave query empty to match all files. Otherwise use <code>key=value</code> pairs joined by <code>&amp;</code>.
+            EAS selects at most Maximum Number of Files matching products server-side, then resolves their file links in
+            Query Chunk Size batches. Cloudflare safely subdivides batches above 20 products. Defaults: 100 and 1000.
+          </p>
 
           <div class="actions">
-            <button id="submitBtn" class="primary-btn" type="submit">Run Query And Download</button>
+            <button id="submitBtn" class="primary-btn" type="submit">Run Query</button>
+            <button id="stopQueryBtn" class="ghost-btn" type="button" disabled>Stop Query</button>
             <button id="commandBtn" class="ghost-btn" type="button">Build Python Command</button>
           </div>
         </form>
@@ -371,9 +465,25 @@
           <p id="errorText" class="error"></p>
         </div>
 
+        <section id="downloadPanel" class="download-panel" hidden aria-labelledby="downloadHeading">
+          <h2 id="downloadHeading">Download results</h2>
+          <p id="downloadSummary" class="download-summary"></p>
+          <div class="actions">
+            <button id="selectAllBtn" class="ghost-btn" type="button">Select All</button>
+            <button id="clearSelectionBtn" class="ghost-btn" type="button">Clear Selection</button>
+            <button id="downloadSelectedBtn" class="primary-btn" type="button" disabled>Download Selected</button>
+          </div>
+          <div id="downloadList" class="download-list"></div>
+          <p class="hint">
+            Links point to DSS data files. Open one link directly, or use selected download to retrieve files through
+            this page's proxy and package them as a zip.
+          </p>
+        </section>
+
         <div class="command">
-          <strong>Equivalent Python command</strong>
+          <strong>Equivalent Python bulk-metadata command</strong>
           <pre id="commandOutput">No command generated yet.</pre>
+          <p class="hint">Python command chunks metadata retrieval. This page lists and downloads DSS files.</p>
         </div>
 
         <p class="footnote">
@@ -387,19 +497,37 @@
     <script>
       const EAS_REST_ORIGIN = "https://eas-dps-rest-ops.esac.esa.int";
       const EAS_REST_BASE_URL = `${EAS_REST_ORIGIN}/REST`;
+      const DB_VIEW_ORIGIN = "https://eas-dps-cus-ops.esac.esa.int";
+      const DB_VIEW_URL = `${DB_VIEW_ORIGIN}/DbView`;
+      const DSS_ORIGIN = "https://euclidsoc.esac.esa.int";
       const EAS_REST_CANONICAL_HOST = "eas-dps-rest-ops.esac.esa.int";
       const EAS_REST_NODE_HOST_RE = /^eas-dps-rest-ops-node\d+\.esac\.esa\.int$/i;
       const DOC_CARD_BASE_URL = "http://st-dm.pages.euclid-sgs.uk/data-product-doc/dm10/";
       const DATA_PRODUCT_OPTIONS = window.DATA_PRODUCT_OPTIONS || {};
       const PROXY_ENDPOINT = "https://eas-downloader-proxy.cylammarco.workers.dev";
-      const POLL_INTERVAL_MS = 10000;
-      const MAX_POLL_ATTEMPTS = 300;
+      const POLL_INTERVAL_MS = 1000;
+      const MAX_POLL_ATTEMPTS = 3000;
       const POLL_TIMEOUT_SECONDS = Math.floor((POLL_INTERVAL_MS * MAX_POLL_ATTEMPTS) / 1000);
+      const DEFAULT_QUERY_CHUNK_SIZE = 100;
+      const DEFAULT_MAXIMUM_FILES = 1000;
+      const MAX_OBJECTS_PER_PROXY_CHUNK = 20;
+      const PRODUCT_ID_FIELD = "Header.ProductId.LimitedString";
+      const DATA_FILE_NAME_FIELD = "Data.DataStorage.DataContainer.FileName";
+      const MATCH_ALL_PRODUCT_ID_FILTER_KEY = `${PRODUCT_ID_FIELD}!`;
+      const MATCH_ALL_PRODUCT_ID_FILTER_VALUE = '""';
+      const ALPHABETICAL_COLLATOR = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
 
       const form = document.getElementById("easForm");
       const submitBtn = document.getElementById("submitBtn");
+      const stopQueryBtn = document.getElementById("stopQueryBtn");
       const commandBtn = document.getElementById("commandBtn");
       const togglePasswordBtn = document.getElementById("togglePassword");
+      const downloadPanel = document.getElementById("downloadPanel");
+      const downloadSummary = document.getElementById("downloadSummary");
+      const downloadList = document.getElementById("downloadList");
+      const selectAllBtn = document.getElementById("selectAllBtn");
+      const clearSelectionBtn = document.getElementById("clearSelectionBtn");
+      const downloadSelectedBtn = document.getElementById("downloadSelectedBtn");
 
       const statusText = document.getElementById("statusText");
       const errorText = document.getElementById("errorText");
@@ -412,6 +540,12 @@
       const dataProductInput = document.getElementById("dataProduct");
       const dataProductDocLink = document.getElementById("dataProductDocLink");
       const queryInput = document.getElementById("query");
+      const queryChunkSizeInput = document.getElementById("queryChunkSize");
+      const maximumFilesInput = document.getElementById("maximumFiles");
+
+      let querySession = null;
+      let downloadInProgress = false;
+      let activeQueryAbortController = null;
 
       function updateStatus(message) {
         statusText.textContent = message;
@@ -419,6 +553,22 @@
 
       function updateError(message) {
         errorText.textContent = message || "";
+      }
+
+      function setQueryInputsDisabled(disabled) {
+        [
+          usernameInput,
+          passwordInput,
+          projectInput,
+          dataProductTypeInput,
+          dataProductInput,
+          queryChunkSizeInput,
+          maximumFilesInput,
+          queryInput,
+          togglePasswordBtn,
+        ].forEach((input) => {
+          input.disabled = disabled;
+        });
       }
 
       function updateDataProductDocLink() {
@@ -441,9 +591,20 @@
         dataProductDocLink.textContent = href;
       }
 
+      function sortSelectOptions(select) {
+        const selectedValue = select.value;
+        const sortedOptions = Array.from(select.options).sort((left, right) =>
+          ALPHABETICAL_COLLATOR.compare(left.textContent, right.textContent)
+        );
+        select.replaceChildren(...sortedOptions);
+        select.value = selectedValue;
+      }
+
       function populateDataProductMenu() {
         const selectedType = dataProductTypeInput.value;
-        const options = DATA_PRODUCT_OPTIONS[selectedType] || [];
+        const options = [...(DATA_PRODUCT_OPTIONS[selectedType] || [])].sort((left, right) =>
+          ALPHABETICAL_COLLATOR.compare(left.name, right.name)
+        );
 
         dataProductInput.innerHTML = "";
 
@@ -469,8 +630,37 @@
         updateDataProductDocLink();
       }
 
-      function delay(ms) {
-        return new Promise((resolve) => setTimeout(resolve, ms));
+      function createAbortError() {
+        return new DOMException("Query stopped by user.", "AbortError");
+      }
+
+      function throwIfAborted(signal) {
+        if (signal?.aborted) {
+          throw createAbortError();
+        }
+      }
+
+      function isAbortError(error) {
+        return error?.name === "AbortError";
+      }
+
+      function delay(ms, signal) {
+        return new Promise((resolve, reject) => {
+          if (signal?.aborted) {
+            reject(createAbortError());
+            return;
+          }
+
+          const timer = setTimeout(resolve, ms);
+          signal?.addEventListener(
+            "abort",
+            () => {
+              clearTimeout(timer);
+              reject(createAbortError());
+            },
+            { once: true }
+          );
+        });
       }
 
       function encodeAuth(username, password) {
@@ -580,7 +770,7 @@
         return parsed.toString();
       }
 
-      function appendUserQuery(searchParams, rawQuery) {
+      function appendOptionalUserQuery(searchParams, rawQuery) {
         const normalizedQuery = String(rawQuery || "").trim().replace(/^[?&]+/, "");
         if (!normalizedQuery) {
           return;
@@ -607,14 +797,268 @@
         });
       }
 
-      function buildEasRequestUrl(dataProduct, rawQuery, project) {
+      function appendUserQuery(searchParams, rawQuery) {
+        const normalizedQuery = String(rawQuery || "").trim();
+        if (!normalizedQuery) {
+          searchParams.append(MATCH_ALL_PRODUCT_ID_FILTER_KEY, MATCH_ALL_PRODUCT_ID_FILTER_VALUE);
+          return;
+        }
+        appendOptionalUserQuery(searchParams, normalizedQuery);
+      }
+
+      function buildEasRequestUrl(dataProduct, rawQuery, project, options = {}) {
+        const { fields = null, fileFormat = "TGZ" } = options;
         const targetUrl = new URL(EAS_REST_BASE_URL);
-        targetUrl.searchParams.set("class_name", dataProduct);
         appendUserQuery(targetUrl.searchParams, rawQuery);
+        targetUrl.searchParams.set("class_name", dataProduct);
         targetUrl.searchParams.set("make_asy", "True");
-        targetUrl.searchParams.set("file_format", "TGZ");
+        if (fileFormat) {
+          targetUrl.searchParams.set("file_format", fileFormat);
+        } else {
+          targetUrl.searchParams.delete("file_format");
+        }
         targetUrl.searchParams.set("PROJECT", project);
+        if (fields) {
+          targetUrl.searchParams.set("fields", fields);
+        } else {
+          targetUrl.searchParams.delete("fields");
+        }
         return targetUrl.toString();
+      }
+
+      function buildDownloadableFileLookupUrl(dataProduct, rawQuery, project) {
+        return buildEasRequestUrl(dataProduct, rawQuery, project, {
+          fields: `${PRODUCT_ID_FIELD}:${DATA_FILE_NAME_FIELD}`,
+          fileFormat: null,
+        });
+      }
+
+      function buildDbViewRequestUrl(dataProduct, rawQuery, project, maximumFiles) {
+        const targetUrl = new URL(DB_VIEW_URL);
+        appendOptionalUserQuery(targetUrl.searchParams, rawQuery);
+        targetUrl.searchParams.set("project", project);
+        targetUrl.searchParams.set("mainpref_numrows", String(maximumFiles));
+        targetUrl.searchParams.set("class_str", dataProduct);
+        targetUrl.searchParams.set("mode", "table_res");
+        targetUrl.searchParams.set("tree_state", dataProduct);
+        return targetUrl.toString();
+      }
+
+      function buildObjectFileLookupUrl(dataProduct, objectId, project) {
+        if (!objectId) {
+          throw new Error("Cannot look up an empty EAS object ID.");
+        }
+        return buildDownloadableFileLookupUrl(dataProduct, `object_id=${objectId}`, project);
+      }
+
+      function parseQueryChunkSize(value) {
+        return parsePositiveInteger(value, "Query chunk size");
+      }
+
+      function parseMaximumFiles(value) {
+        return parsePositiveInteger(value, "Maximum number of files");
+      }
+
+      function parsePositiveInteger(value, label) {
+        const parsedValue = Number(value);
+        if (!Number.isInteger(parsedValue) || parsedValue < 1) {
+          throw new Error(`${label} must be a whole number greater than zero.`);
+        }
+        return parsedValue;
+      }
+
+      function chunkItems(items, chunkSize) {
+        const chunks = [];
+        for (let index = 0; index < items.length; index += chunkSize) {
+          chunks.push(items.slice(index, index + chunkSize));
+        }
+        return chunks;
+      }
+
+      function parseCsvRows(text) {
+        const rows = [];
+        let row = [];
+        let value = "";
+        let quoted = false;
+
+        for (let index = 0; index < text.length; index += 1) {
+          const character = text[index];
+
+          if (character === '"') {
+            if (quoted && text[index + 1] === '"') {
+              value += '"';
+              index += 1;
+            } else {
+              quoted = !quoted;
+            }
+          } else if (character === "," && !quoted) {
+            row.push(value);
+            value = "";
+          } else if ((character === "\n" || character === "\r") && !quoted) {
+            if (character === "\r" && text[index + 1] === "\n") {
+              index += 1;
+            }
+            row.push(value);
+            if (row.some((field) => field.length > 0)) {
+              rows.push(row);
+            }
+            row = [];
+            value = "";
+          } else {
+            value += character;
+          }
+        }
+
+        row.push(value);
+        if (row.some((field) => field.length > 0)) {
+          rows.push(row);
+        }
+        return rows;
+      }
+
+      function buildDssDownloadUrl(fileName) {
+        const normalizedFileName = String(fileName || "").trim();
+        if (!normalizedFileName) {
+          throw new Error("EAS returned an empty data file name.");
+        }
+
+        let url;
+        try {
+          url = new URL(normalizedFileName);
+        } catch (_notAbsoluteUrl) {
+          url = new URL(normalizedFileName.replace(/^\/+/, ""), `${DSS_ORIGIN}/`);
+        }
+
+        const dssHost = new URL(DSS_ORIGIN).hostname;
+        if (url.protocol !== "https:" || url.hostname !== dssHost) {
+          throw new Error(`EAS returned an unsupported DSS file URL: ${normalizedFileName}`);
+        }
+        return url.toString();
+      }
+
+      function extractDownloadableFiles(csvText) {
+        const rows = parseCsvRows(csvText);
+        if (!rows.length) {
+          return [];
+        }
+
+        const header = rows[0].map((field) => String(field || "").trim());
+        const productIdColumn = header.findIndex((field) => /productid|limitedstring/i.test(field));
+        const fileNameColumn = header.findIndex((field) => /datacontainer\.filename|filename/i.test(field));
+        const hasHeader = productIdColumn !== -1 || fileNameColumn !== -1;
+        const dataRows = hasHeader ? rows.slice(1) : rows;
+        const productIdIndex = productIdColumn === -1 ? 0 : productIdColumn;
+        const fileNameIndex = fileNameColumn === -1 ? 1 : fileNameColumn;
+        const seen = new Set();
+
+        return dataRows.reduce((files, row) => {
+          const fileName = String(row[fileNameIndex] || "").trim();
+          if (!fileName) {
+            return files;
+          }
+
+          const url = buildDssDownloadUrl(fileName);
+          if (!seen.has(url)) {
+            seen.add(url);
+            files.push({
+              productId: String(row[productIdIndex] || "").trim(),
+              fileName,
+              url,
+            });
+          }
+          return files;
+        }, []);
+      }
+
+      function extractDbViewObjectIds(htmlText) {
+        const seen = new Set();
+        const objectIds = [];
+        const matches = String(htmlText || "").matchAll(/object_id=([0-9A-F]+)/gi);
+
+        for (const match of matches) {
+          const objectId = match[1];
+          if (!seen.has(objectId)) {
+            seen.add(objectId);
+            objectIds.push(objectId);
+          }
+        }
+        return objectIds;
+      }
+
+      function clearQueryResults() {
+        if (downloadInProgress) {
+          return;
+        }
+        querySession = null;
+        downloadPanel.hidden = true;
+        downloadList.replaceChildren();
+        downloadSummary.textContent = "";
+        downloadSelectedBtn.disabled = true;
+        downloadSelectedBtn.textContent = "Download Selected";
+      }
+
+      function getSelectedFiles() {
+        if (!querySession) {
+          return [];
+        }
+
+        return Array.from(downloadList.querySelectorAll('input[type="checkbox"]:checked'))
+          .map((checkbox) => querySession.files[Number(checkbox.value)])
+          .filter(Boolean);
+      }
+
+      function updateDownloadSelection() {
+        const selectedCount = getSelectedFiles().length;
+        downloadSelectedBtn.disabled = !querySession || !selectedCount || downloadInProgress;
+        downloadSelectedBtn.textContent = selectedCount ? `Download Selected (${selectedCount})` : "Download Selected";
+      }
+
+      function setDownloadControlsDisabled(disabled) {
+        selectAllBtn.disabled = disabled;
+        clearSelectionBtn.disabled = disabled;
+        downloadList.querySelectorAll('input[type="checkbox"]').forEach((checkbox) => {
+          checkbox.disabled = disabled;
+        });
+      }
+
+      function renderDownloadResults(session) {
+        downloadList.replaceChildren();
+        const resultCount = session.files.length;
+        downloadSummary.textContent = session.reachedMaximum
+          ? `EAS selected first ${session.maximumFiles} matching products server-side; ${resultCount} downloadable files found. Select files to download.`
+          : `${resultCount} downloadable file${resultCount === 1 ? "" : "s"} found. Select files to download.`;
+
+        session.files.forEach((file, index) => {
+          const item = document.createElement("div");
+          item.className = "download-item";
+
+          const checkbox = document.createElement("input");
+          checkbox.id = `download-product-${index}`;
+          checkbox.type = "checkbox";
+          checkbox.value = String(index);
+          checkbox.addEventListener("change", updateDownloadSelection);
+
+          const label = document.createElement("label");
+          label.className = "download-name";
+          label.htmlFor = checkbox.id;
+          label.textContent = file.fileName;
+          if (file.productId) {
+            label.title = `Product ID: ${file.productId}`;
+          }
+
+          const directLink = document.createElement("a");
+          directLink.className = "download-link";
+          directLink.href = file.url;
+          directLink.target = "_blank";
+          directLink.rel = "noopener noreferrer";
+          directLink.textContent = "Download link";
+
+          item.append(checkbox, label, directLink);
+          downloadList.appendChild(item);
+        });
+
+        downloadPanel.hidden = false;
+        updateDownloadSelection();
       }
 
       function buildCanonicalRestFallbackUrl(url) {
@@ -634,21 +1078,37 @@
         }
       }
 
-      async function fetchViaProxy(url, authHeaderValue, responseType) {
-        const proxyEndpoint = PROXY_ENDPOINT;
+      function postToProxy(payload, signal) {
+        return fetch(PROXY_ENDPOINT, {
+          method: "POST",
+          signal,
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        });
+      }
+
+      async function fetchViaProxy(url, authHeaderValue, responseType, signal) {
         let targetUrl = normalizeEasTargetUrl(url);
 
+        function getTargetHostname(requestUrl) {
+          try {
+            return new URL(requestUrl).hostname;
+          } catch (_invalidUrlError) {
+            return "unknown host";
+          }
+        }
+
         async function requestThroughProxy(requestUrl) {
-          return fetch(proxyEndpoint, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              url: requestUrl,
-              authHeaderValue,
-            }),
-          });
+          const requestHeaders = getTargetHostname(requestUrl) === new URL(DSS_ORIGIN).hostname
+            ? { Pragma: "DSSGET" }
+            : undefined;
+          return postToProxy({
+            url: requestUrl,
+            authHeaderValue,
+            requestHeaders,
+          }, signal);
         }
 
         let response = await requestThroughProxy(targetUrl);
@@ -673,7 +1133,7 @@
 
           if (response.status === 403 && /origin not allowed/i.test(text)) {
             throw new Error(
-              `Proxy rejected this page origin (${window.location.origin}) for target URL ${targetUrl}. Open this app from https://cylammarco.github.io/EAS-Downloader/ or add ${window.location.origin} to the proxy Worker allowlist.`
+              `Proxy rejected this page origin (${window.location.origin}) for target URL ${targetUrl}. Use GitHub Pages or serve locally from http://localhost, http://127.0.0.1, or IPv6 loopback after deploying current proxy-worker.js.`
             );
           }
 
@@ -683,7 +1143,7 @@
 
           if (response.status === 403 && /target url not allowed/i.test(text)) {
             throw new Error(
-              `Proxy target URL allowlist blocked ${targetUrl}. Add this host to Worker allowlist (or wildcard for EAS node hosts: eas-dps-rest-ops-node*.esac.esa.int).`
+              `Deployed proxy Worker blocked ${getTargetHostname(targetUrl)}. Deploy proxy-worker.js containing that host allowlist; DSS downloads also require its scoped Pragma: DSSGET forwarding. Target: ${targetUrl}`
             );
           }
 
@@ -703,12 +1163,147 @@
         return response.text();
       }
 
-      async function fetchText(url, authHeaderValue) {
-        return fetchViaProxy(url, authHeaderValue, "text");
+      async function fetchObjectXmlChunk(dataProduct, project, objectIds, authHeaderValue, signal) {
+        const response = await postToProxy({
+          operation: "resolve-object-xml-chunk",
+          dataProduct,
+          project,
+          objectIds,
+          authHeaderValue,
+        }, signal);
+
+        if (!response.ok) {
+          const detail = (await response.text()).slice(0, 260);
+          throw new Error(`Proxy XML chunk request failed (${response.status}): ${detail || response.statusText}`);
+        }
+
+        let payload;
+        try {
+          payload = await response.json();
+        } catch (_error) {
+          throw new Error("Proxy XML chunk response was not valid JSON.");
+        }
+
+        if (!Array.isArray(payload.files)) {
+          throw new Error("Proxy XML chunk response did not contain file results.");
+        }
+
+        const files = payload.files.reduce((items, file) => {
+          const fileName = String(file?.fileName || "").trim();
+          if (!fileName) {
+            return items;
+          }
+          items.push({
+            productId: String(file?.productId || "").trim(),
+            fileName,
+            url: buildDssDownloadUrl(fileName),
+          });
+          return items;
+        }, []);
+
+        return {
+          files,
+          errors: Array.isArray(payload.errors) ? payload.errors : [],
+        };
       }
 
-      async function fetchBlob(url, authHeaderValue) {
-        return fetchViaProxy(url, authHeaderValue, "blob");
+      async function fetchText(url, authHeaderValue, signal) {
+        return fetchViaProxy(url, authHeaderValue, "text", signal);
+      }
+
+      async function fetchBlob(url, authHeaderValue, signal) {
+        return fetchViaProxy(url, authHeaderValue, "blob", signal);
+      }
+
+      async function runAsyncEasRequest(requestUrl, authHeaderValue, statusPrefix, signal) {
+        throwIfAborted(signal);
+        const initialText = await fetchText(requestUrl, authHeaderValue, signal);
+        const initialPayload = parseResponsePayload(initialText);
+
+        if (!initialPayload.url) {
+          throw new Error("Could not read job URL from server response.");
+        }
+
+        let jobUrl = normalizeEasTargetUrl(initialPayload.url);
+        let finalUrl = jobUrl;
+        let attempts = 0;
+        let missingJobIdRetries = 0;
+        let finished = false;
+        const MAX_MISSING_JOB_RETRIES = 8;
+
+        console.info("EAS async job started", {
+          requestUrl,
+          initialJobUrl: jobUrl,
+          initialPayload,
+        });
+
+        while (attempts < MAX_POLL_ATTEMPTS) {
+          attempts += 1;
+          await delay(POLL_INTERVAL_MS, signal);
+
+          const pollText = await fetchText(jobUrl, authHeaderValue, signal);
+          const pollPayload = parseResponsePayload(pollText);
+          const status = pollPayload.status || "UNKNOWN";
+
+          if (pollPayload.url) {
+            const normalizedPollUrl = normalizeEasTargetUrl(pollPayload.url);
+            if (normalizedPollUrl !== jobUrl) {
+              console.info("EAS async poll URL updated", {
+                status,
+                from: jobUrl,
+                to: normalizedPollUrl,
+              });
+            }
+            finalUrl = normalizedPollUrl;
+            jobUrl = normalizedPollUrl;
+          }
+
+          updateStatus(`${statusPrefix}: poll ${attempts}: ${status}`);
+
+          if (status === "FINISHED") {
+            finished = true;
+            break;
+          }
+
+          if (status === "ERROR") {
+            const asyncErrorDetail = describeAsyncJobError(pollPayload, pollText);
+
+            if (/No such job_id/i.test(asyncErrorDetail) && missingJobIdRetries < MAX_MISSING_JOB_RETRIES) {
+              missingJobIdRetries += 1;
+              const backoffMs = Math.min(1000 * missingJobIdRetries, 5000);
+              console.warn("EAS async job not yet visible, retrying poll", {
+                missingJobIdRetries,
+                maxRetries: MAX_MISSING_JOB_RETRIES,
+                backoffMs,
+                jobUrl,
+                asyncErrorDetail,
+              });
+              updateStatus(
+                `${statusPrefix}: poll ${attempts}: ERROR (job id not ready, retry ${missingJobIdRetries}/${MAX_MISSING_JOB_RETRIES})`
+              );
+              await delay(backoffMs, signal);
+              continue;
+            }
+
+            console.error("EAS async job reported ERROR status", {
+              attempts,
+              jobUrl,
+              pollPayload,
+              pollTextSnippet: String(pollText || "").slice(0, 800),
+            });
+            throw new Error(`Server reported ERROR status for the async job at ${jobUrl}. ${asyncErrorDetail}`);
+          }
+
+          if (missingJobIdRetries > 0) {
+            missingJobIdRetries = 0;
+          }
+        }
+
+        if (!finished) {
+          throw new Error(`Polling timed out after ${POLL_TIMEOUT_SECONDS} seconds.`);
+        }
+
+        return finalUrl;
       }
 
       function downloadBlob(blob, filename) {
@@ -722,113 +1317,96 @@
         URL.revokeObjectURL(objectUrl);
       }
 
-      function readTarString(bytes, start, length) {
-        const segment = bytes.subarray(start, start + length);
-        let endIndex = segment.indexOf(0);
-        if (endIndex === -1) {
-          endIndex = segment.length;
-        }
-        return new TextDecoder("utf-8").decode(segment.subarray(0, endIndex)).trim();
-      }
-
-      function parseTarEntries(tarBytes) {
-        const entries = [];
-        let offset = 0;
-
-        while (offset + 512 <= tarBytes.length) {
-          const header = tarBytes.subarray(offset, offset + 512);
-          const allZeros = header.every((value) => value === 0);
-          if (allZeros) {
-            break;
-          }
-
-          const fileName = readTarString(header, 0, 100);
-          const sizeRaw = readTarString(header, 124, 12).replace(/\0/g, "").trim();
-          const size = parseInt(sizeRaw || "0", 8);
-          const typeFlag = String.fromCharCode(header[156] || 0);
-
-          offset += 512;
-
-          const safeSize = Number.isFinite(size) && size >= 0 ? size : 0;
-          const fileBytes = tarBytes.slice(offset, offset + safeSize);
-          const isRegularFile = typeFlag === "\0" || typeFlag === "0";
-
-          if (isRegularFile && fileName) {
-            entries.push({
-              name: fileName,
-              bytes: fileBytes,
-            });
-          }
-
-          offset += Math.ceil(safeSize / 512) * 512;
-        }
-
-        return entries;
-      }
-
       function sanitizeName(name, fallbackName) {
         const normalized = (name || fallbackName).replace(/[^a-zA-Z0-9._-]/g, "_");
         return normalized || fallbackName;
       }
 
-      async function extractXmlFilesFromTgz(tgzBlob) {
-        if (typeof DecompressionStream === "undefined") {
-          throw new Error("Your browser does not support TGZ extraction (missing DecompressionStream).");
+      function makeUniqueZipEntryName(fileName, index, usedNames) {
+        const rawName = String(fileName || "").split("/").pop();
+        const fallbackName = `file-${index + 1}`;
+        const safeName = sanitizeName(rawName, fallbackName);
+        if (!usedNames.has(safeName)) {
+          usedNames.add(safeName);
+          return safeName;
         }
 
-        const tarStream = tgzBlob.stream().pipeThrough(new DecompressionStream("gzip"));
-        const tarBuffer = await new Response(tarStream).arrayBuffer();
-        const tarBytes = new Uint8Array(tarBuffer);
-        const entries = parseTarEntries(tarBytes);
-        const decoder = new TextDecoder("utf-8");
-        const xmlFiles = [];
-
-        entries.forEach((entry, index) => {
-          const content = decoder.decode(entry.bytes);
-          const trimmed = content.trim();
-          if (!trimmed) {
-            return;
-          }
-
-          const lowerName = entry.name.toLowerCase();
-          const isXml = lowerName.endsWith(".xml") || trimmed.startsWith("<?xml") || trimmed.startsWith("<");
-          if (!isXml) {
-            return;
-          }
-
-          const rawName = entry.name.split("/").pop() || `metadata-${index + 1}.xml`;
-          const safeName = sanitizeName(rawName, `metadata-${index + 1}.xml`);
-          const fileName = safeName.toLowerCase().endsWith(".xml") ? safeName : `${safeName}.xml`;
-
-          xmlFiles.push({
-            name: fileName,
-            content,
-          });
-        });
-
-        if (!xmlFiles.length) {
-          throw new Error("No XML files were found in the TGZ archive.");
+        const extensionIndex = safeName.lastIndexOf(".");
+        const baseName = extensionIndex > 0 ? safeName.slice(0, extensionIndex) : safeName;
+        const extension = extensionIndex > 0 ? safeName.slice(extensionIndex) : "";
+        let duplicateNumber = 2;
+        let candidate = `${baseName}-${duplicateNumber}${extension}`;
+        while (usedNames.has(candidate)) {
+          duplicateNumber += 1;
+          candidate = `${baseName}-${duplicateNumber}${extension}`;
         }
-
-        return xmlFiles;
+        usedNames.add(candidate);
+        return candidate;
       }
 
-      async function buildXmlZipBlob(xmlFiles) {
-        if (typeof JSZip === "undefined") {
-          throw new Error("JSZip is not available. Cannot package XML files.");
+      async function downloadSelectedFiles() {
+        if (!querySession) {
+          updateError("Run a query before downloading files.");
+          return;
         }
 
-        const zip = new JSZip();
-        xmlFiles.forEach((file, index) => {
-          const fallbackName = `metadata-${index + 1}.xml`;
-          zip.file(sanitizeName(file.name, fallbackName), file.content);
-        });
+        const selectedFiles = getSelectedFiles();
+        if (!selectedFiles.length) {
+          updateError("Select at least one file to download.");
+          return;
+        }
 
-        return zip.generateAsync({
-          type: "blob",
-          compression: "DEFLATE",
-          compressionOptions: { level: 6 },
-        });
+        updateError("");
+        downloadInProgress = true;
+        setDownloadControlsDisabled(true);
+        updateDownloadSelection();
+        setQueryInputsDisabled(true);
+        submitBtn.disabled = true;
+        commandBtn.disabled = true;
+
+        try {
+          if (typeof JSZip === "undefined") {
+            throw new Error("JSZip is not available. Cannot package selected files.");
+          }
+
+          const zip = new JSZip();
+          const usedNames = new Set();
+          let downloadedCount = 0;
+
+          for (const file of selectedFiles) {
+            downloadedCount += 1;
+            updateStatus(`Downloading file ${downloadedCount}/${selectedFiles.length}...`);
+            const fileBlob = await fetchBlob(file.url, querySession.auth);
+            zip.file(makeUniqueZipEntryName(file.fileName, downloadedCount - 1, usedNames), fileBlob);
+          }
+
+          const safeDataProduct = querySession.dataProduct.replace(/[^a-zA-Z0-9._-]/g, "_") || "metadata";
+          const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+          const outputName = `${safeDataProduct}-${timestamp}-files.zip`;
+
+          updateStatus(`Packaging ${selectedFiles.length} selected file${selectedFiles.length === 1 ? "" : "s"}...`);
+          const zipBlob = await zip.generateAsync({
+            type: "blob",
+            compression: "STORE",
+          });
+          downloadBlob(zipBlob, outputName);
+          updateStatus(`Done. Downloaded ${outputName}.`);
+        } catch (error) {
+          console.error("DSS download request failed", {
+            error,
+            dataProduct: querySession.dataProduct,
+            project: querySession.project,
+          });
+          updateError(error.message || String(error));
+          updateStatus("Download failed.");
+        } finally {
+          downloadInProgress = false;
+          setDownloadControlsDisabled(false);
+          updateDownloadSelection();
+          setQueryInputsDisabled(false);
+          submitBtn.disabled = false;
+          commandBtn.disabled = false;
+        }
       }
 
       function shellQuote(value) {
@@ -841,6 +1419,7 @@
         const project = projectInput.value;
         const dataProduct = dataProductInput.value.trim();
         const query = queryInput.value.trim();
+        const queryChunkSize = queryChunkSizeInput.value.trim() || String(DEFAULT_QUERY_CHUNK_SIZE);
 
         const command = [
           "python download_eas_script.py",
@@ -848,7 +1427,8 @@
           `--password ${shellQuote(password || "<password>")}`,
           `--project ${shellQuote(project)}`,
           `--data_product ${shellQuote(dataProduct || "<data_product>")}`,
-          `--query ${shellQuote(query || "<query>")}`,
+          `--query ${shellQuote(query)}`,
+          `--query_chunk_size ${shellQuote(queryChunkSize)}`,
         ].join(" ");
 
         commandOutput.textContent = command;
@@ -857,14 +1437,27 @@
       dataProductTypeInput.addEventListener("change", () => {
         populateDataProductMenu();
         buildCommand();
+        clearQueryResults();
       });
 
       dataProductInput.addEventListener("change", () => {
         updateDataProductDocLink();
         buildCommand();
+        clearQueryResults();
       });
 
-      projectInput.addEventListener("change", buildCommand);
+      projectInput.addEventListener("change", () => {
+        buildCommand();
+        clearQueryResults();
+      });
+      queryChunkSizeInput.addEventListener("input", () => {
+        buildCommand();
+        clearQueryResults();
+      });
+      maximumFilesInput.addEventListener("input", clearQueryResults);
+      usernameInput.addEventListener("input", clearQueryResults);
+      passwordInput.addEventListener("input", clearQueryResults);
+      queryInput.addEventListener("input", clearQueryResults);
 
       togglePasswordBtn.addEventListener("click", () => {
         const show = passwordInput.type === "password";
@@ -872,6 +1465,7 @@
         togglePasswordBtn.textContent = show ? "Hide" : "Show";
       });
 
+      sortSelectOptions(dataProductTypeInput);
       populateDataProductMenu();
       buildCommand();
 
@@ -879,6 +1473,31 @@
         buildCommand();
         updateError("");
         updateStatus("Equivalent Python command generated.");
+      });
+
+      selectAllBtn.addEventListener("click", () => {
+        downloadList.querySelectorAll('input[type="checkbox"]').forEach((checkbox) => {
+          checkbox.checked = true;
+        });
+        updateDownloadSelection();
+      });
+
+      clearSelectionBtn.addEventListener("click", () => {
+        downloadList.querySelectorAll('input[type="checkbox"]').forEach((checkbox) => {
+          checkbox.checked = false;
+        });
+        updateDownloadSelection();
+      });
+
+      downloadSelectedBtn.addEventListener("click", downloadSelectedFiles);
+
+      stopQueryBtn.addEventListener("click", () => {
+        if (!activeQueryAbortController) {
+          return;
+        }
+        stopQueryBtn.disabled = true;
+        updateStatus("Stopping query...");
+        activeQueryAbortController.abort();
       });
 
       form.addEventListener("submit", async (event) => {
@@ -892,124 +1511,94 @@
         const dataProduct = dataProductInput.value.trim();
         const query = queryInput.value.trim();
 
-        if (!username || !password || !dataProduct || !query) {
+        if (!username || !password || !dataProduct) {
           updateError("Please fill in all required fields.");
           return;
         }
 
-        buildCommand();
-
-        submitBtn.disabled = true;
-        commandBtn.disabled = true;
-
+        const queryAbortController = new AbortController();
+        activeQueryAbortController = queryAbortController;
         try {
+          const queryChunkSize = parseQueryChunkSize(queryChunkSizeInput.value);
+          const maximumFiles = parseMaximumFiles(maximumFilesInput.value || String(DEFAULT_MAXIMUM_FILES));
+          buildCommand();
+          clearQueryResults();
+
+          setQueryInputsDisabled(true);
+          submitBtn.disabled = true;
+          commandBtn.disabled = true;
+          stopQueryBtn.disabled = false;
+
           const auth = encodeAuth(username, password);
-          const requestUrl = buildEasRequestUrl(dataProduct, query, project);
+          const dbViewRequestUrl = buildDbViewRequestUrl(dataProduct, query, project, maximumFiles);
 
-          updateStatus("Submitting query via proxy...");
-          const initialText = await fetchText(requestUrl, auth);
-          const initialPayload = parseResponsePayload(initialText);
+          updateStatus(`Requesting first ${maximumFiles} matching products from EAS...`);
+          const objectIds = extractDbViewObjectIds(
+            await fetchText(dbViewRequestUrl, auth, queryAbortController.signal)
+          );
 
-          if (!initialPayload.url) {
-            throw new Error("Could not read job URL from server response.");
+          if (!objectIds.length) {
+            throw new Error("Query returned no matching products.");
           }
 
-          let jobUrl = normalizeEasTargetUrl(initialPayload.url);
-          let finalUrl = jobUrl;
-          let attempts = 0;
-          let missingJobIdRetries = 0;
-          const MAX_MISSING_JOB_RETRIES = 8;
+          const objectIdChunks = chunkItems(objectIds, Math.min(queryChunkSize, MAX_OBJECTS_PER_PROXY_CHUNK));
+          const filesByUrl = new Map();
+          const chunkErrors = [];
+          let processedChunkCount = 0;
+          for (let chunkIndex = 0; chunkIndex < objectIdChunks.length; chunkIndex += 1) {
+            throwIfAborted(queryAbortController.signal);
+            const objectIdChunk = objectIdChunks[chunkIndex];
+            const chunkNumber = chunkIndex + 1;
+            const statusPrefix = `Finding DSS links, chunk ${chunkNumber}/${objectIdChunks.length}`;
 
-          console.info("EAS async job started", {
-            requestUrl,
-            initialJobUrl: jobUrl,
-            initialPayload,
-          });
-
-          updateStatus("Waiting for async job (polling every 10 seconds)...");
-
-          while (attempts < MAX_POLL_ATTEMPTS) {
-            attempts += 1;
-            await delay(POLL_INTERVAL_MS);
-
-            const pollText = await fetchText(jobUrl, auth);
-            const pollPayload = parseResponsePayload(pollText);
-            const status = pollPayload.status || "UNKNOWN";
-
-            if (pollPayload.url) {
-              const normalizedPollUrl = normalizeEasTargetUrl(pollPayload.url);
-              if (normalizedPollUrl !== jobUrl) {
-                console.info("EAS async poll URL updated", {
-                  status,
-                  from: jobUrl,
-                  to: normalizedPollUrl,
-                });
-              }
-              finalUrl = normalizedPollUrl;
-              jobUrl = normalizedPollUrl;
-            }
-
-            updateStatus(`Polling attempt ${attempts}: ${status}`);
-
-            if (status === "FINISHED") {
-              break;
-            }
-
-            if (status === "ERROR") {
-              const asyncErrorDetail = describeAsyncJobError(pollPayload, pollText);
-
-              if (/No such job_id/i.test(asyncErrorDetail) && missingJobIdRetries < MAX_MISSING_JOB_RETRIES) {
-                missingJobIdRetries += 1;
-                const backoffMs = Math.min(1000 * missingJobIdRetries, 5000);
-                console.warn("EAS async job not yet visible, retrying poll", {
-                  missingJobIdRetries,
-                  maxRetries: MAX_MISSING_JOB_RETRIES,
-                  backoffMs,
-                  jobUrl,
-                  asyncErrorDetail,
-                });
-                updateStatus(
-                  `Polling attempt ${attempts}: ERROR (job id not ready, retry ${missingJobIdRetries}/${MAX_MISSING_JOB_RETRIES})`
-                );
-                await delay(backoffMs);
-                continue;
-              }
-
-              console.error("EAS async job reported ERROR status", {
-                attempts,
-                jobUrl,
-                pollPayload,
-                pollTextSnippet: String(pollText || "").slice(0, 800),
-              });
-              throw new Error(`Server reported ERROR status for the async job at ${jobUrl}. ${asyncErrorDetail}`);
-            }
-
-            if (missingJobIdRetries > 0) {
-              missingJobIdRetries = 0;
-            }
+            updateStatus(`${statusPrefix} (${objectIdChunk.length} products)...`);
+            const chunkResult = await fetchObjectXmlChunk(
+              dataProduct,
+              project,
+              objectIdChunk,
+              auth,
+              queryAbortController.signal
+            );
+            processedChunkCount += 1;
+            chunkResult.files.forEach((file) => filesByUrl.set(file.url, file));
+            chunkErrors.push(...chunkResult.errors);
           }
 
-          if (attempts >= MAX_POLL_ATTEMPTS) {
-            throw new Error(`Polling timed out after ${POLL_TIMEOUT_SECONDS} seconds.`);
+          const files = Array.from(filesByUrl.values());
+          if (!files.length) {
+            throw new Error(`Found ${objectIds.length} products, but no ${DATA_FILE_NAME_FIELD} values.`);
           }
 
-          updateStatus("Job completed. Downloading TGZ archive...");
-          const tgzBlob = await fetchBlob(finalUrl, auth);
-
-          const safeDataProduct = dataProduct.replace(/[^a-zA-Z0-9._-]/g, "_") || "metadata";
-          const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-          const tgzOutputName = `${safeDataProduct}-${timestamp}.tgz`;
-          const xmlOutputName = `${safeDataProduct}-${timestamp}-xml.zip`;
-
-          updateStatus("Extracting XML files from TGZ...");
-          const xmlFiles = await extractXmlFilesFromTgz(tgzBlob);
-
-          updateStatus(`Packaging ${xmlFiles.length} XML file(s)...`);
-          const xmlZipBlob = await buildXmlZipBlob(xmlFiles);
-          downloadBlob(xmlZipBlob, xmlOutputName);
-          downloadBlob(tgzBlob, tgzOutputName);
-          updateStatus(`Done. Downloaded ${xmlOutputName} and ${tgzOutputName}`);
+          const reachedMaximum = objectIds.length === maximumFiles;
+          querySession = {
+            auth,
+            project,
+            dataProduct,
+            query,
+            queryChunkSize,
+            maximumFiles,
+            reachedMaximum,
+            files,
+          };
+          renderDownloadResults(querySession);
+          const partialFailureSuffix = chunkErrors.length
+            ? ` ${chunkErrors.length} product XML export${chunkErrors.length === 1 ? "" : "s"} failed; inspect browser console.`
+            : "";
+          if (chunkErrors.length) {
+            console.warn("Some EAS XML exports failed", chunkErrors);
+          }
+          updateStatus(
+            reachedMaximum
+              ? `EAS selected first ${objectIds.length} matching products server-side. Found ${files.length} DSS file${files.length === 1 ? "" : "s"} in ${processedChunkCount} chunk${processedChunkCount === 1 ? "" : "s"}.${partialFailureSuffix}`
+              : `Query complete. Found ${files.length} DSS file${files.length === 1 ? "" : "s"} from ${objectIds.length} matching products in ${processedChunkCount} chunk${processedChunkCount === 1 ? "" : "s"}.${partialFailureSuffix}`
+          );
         } catch (error) {
+          if (isAbortError(error)) {
+            clearQueryResults();
+            updateError("");
+            updateStatus("Query stopped. Already submitted EAS jobs may still finish on server, but this page stopped waiting.");
+            return;
+          }
           console.error("EAS query request failed", {
             error,
             proxyEndpoint,
@@ -1019,8 +1608,13 @@
           updateError(error.message || String(error));
           updateStatus("Request failed.");
         } finally {
+          if (activeQueryAbortController === queryAbortController) {
+            activeQueryAbortController = null;
+          }
+          setQueryInputsDisabled(false);
           submitBtn.disabled = false;
           commandBtn.disabled = false;
+          stopQueryBtn.disabled = true;
         }
       });
     </script>
