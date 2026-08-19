@@ -26,6 +26,7 @@ class ProxyWorkerTest(unittest.TestCase):
         self.assertIn("const OBJECT_FETCH_CONCURRENCY = 5;", WORKER)
         self.assertIn('new URL(`https://${CUS_HOST}/XML`)', WORKER)
         self.assertIn('xmlTagValues(xmlText, "DataStorage")', WORKER)
+        self.assertIn('files: fileNames.map((fileName) => ({ objectId, productId, fileName }))', WORKER)
 
     def test_dss_header_is_scoped_to_dss_host(self):
         self.assertIn('if (target.hostname === DSS_HOST && payload.requestHeaders?.Pragma === "DSSGET")', WORKER)

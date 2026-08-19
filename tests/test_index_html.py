@@ -11,6 +11,7 @@ class QueryAndDownloadUiTest(unittest.TestCase):
         self.assertIn('id="submitBtn" class="primary-btn" type="submit">Run Query</button>', INDEX_HTML)
         self.assertIn('id="stopQueryBtn" class="ghost-btn" type="button" disabled>Stop Query</button>', INDEX_HTML)
         self.assertIn('id="downloadSelectedBtn" class="primary-btn" type="button" disabled>Download Selected</button>', INDEX_HTML)
+        self.assertIn('id="downloadSelectedXmlBtn" class="ghost-btn" type="button" disabled>Download Selected XML</button>', INDEX_HTML)
 
     def test_empty_query_is_allowed_as_match_all(self):
         self.assertIn('placeholder="Leave empty to match all files', INDEX_HTML)
@@ -18,7 +19,6 @@ class QueryAndDownloadUiTest(unittest.TestCase):
         self.assertIsNotNone(query_textarea)
         self.assertNotIn("required", query_textarea.group(0))
         self.assertIn('if (!username || !password || !dataProduct) {', INDEX_HTML)
-        self.assertIn('`--query ${shellQuote(query)}`', INDEX_HTML)
         self.assertIn('const MATCH_ALL_PRODUCT_ID_FILTER_KEY = `${PRODUCT_ID_FIELD}!`;', INDEX_HTML)
         self.assertIn('searchParams.append(MATCH_ALL_PRODUCT_ID_FILTER_KEY, MATCH_ALL_PRODUCT_ID_FILTER_VALUE);', INDEX_HTML)
 
@@ -39,6 +39,22 @@ class QueryAndDownloadUiTest(unittest.TestCase):
         self.assertIn("function buildDssDownloadUrl", INDEX_HTML)
         self.assertIn("directLink.href = file.url;", INDEX_HTML)
         self.assertIn('directLink.textContent = "Download link";', INDEX_HTML)
+
+    def test_selected_file_command_defaults_to_python_and_can_toggle_to_shell(self):
+        self.assertIn('id="commandFormatBtn"', INDEX_HTML)
+        self.assertIn('let commandFormat = "python";', INDEX_HTML)
+        self.assertIn("function buildPythonDownloadCommand(selectedFiles)", INDEX_HTML)
+        self.assertIn("function buildShellDownloadCommand(selectedFiles)", INDEX_HTML)
+        self.assertIn('"Pragma": "DSSGET"', INDEX_HTML)
+        self.assertIn('EAS_USERNAME', INDEX_HTML)
+        self.assertIn('EAS_PASSWORD', INDEX_HTML)
+        self.assertIn('commandFormat = commandFormat === "python" ? "shell" : "python";', INDEX_HTML)
+
+    def test_results_start_selected_and_selection_populates_command(self):
+        self.assertIn("checkbox.checked = true;", INDEX_HTML)
+        self.assertIn("function updateSelectedDownloadCommand(selectedFiles = getSelectedFiles())", INDEX_HTML)
+        self.assertIn("updateSelectedDownloadCommand();", INDEX_HTML)
+        self.assertIn('commandOutput.textContent = "Select files to generate a download command.";', INDEX_HTML)
 
     def test_query_limits_products_server_side_then_chunks_file_lookup(self):
         self.assertIn('value="100"', INDEX_HTML)
@@ -83,6 +99,14 @@ class QueryAndDownloadUiTest(unittest.TestCase):
         self.assertIn("const selectedFiles = getSelectedFiles();", INDEX_HTML)
         self.assertIn("async function downloadSelectedFiles()", INDEX_HTML)
         self.assertIn("const fileBlob = await fetchBlob(file.url, querySession.auth);", INDEX_HTML)
+
+    def test_selected_xml_download_uses_one_cus_export_per_selected_product(self):
+        self.assertIn("function buildObjectXmlExportUrl(dataProduct, objectId, project)", INDEX_HTML)
+        self.assertIn("objectId: String(file?.objectId || \"\").trim()", INDEX_HTML)
+        self.assertIn("async function downloadSelectedXmlFiles()", INDEX_HTML)
+        self.assertIn("new Map(", INDEX_HTML)
+        self.assertIn("buildObjectXmlExportUrl(querySession.dataProduct, file.objectId, querySession.project)", INDEX_HTML)
+        self.assertIn("const outputName = `${safeDataProduct}-${timestamp}-xml.zip`;", INDEX_HTML)
 
 
 if __name__ == "__main__":

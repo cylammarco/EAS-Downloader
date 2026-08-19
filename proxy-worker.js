@@ -188,7 +188,7 @@ async function resolveObjectXmlChunk(request, payload, headers) {
       }
       return {
         objectId,
-        files: fileNames.map((fileName) => ({ productId, fileName })),
+        files: fileNames.map((fileName) => ({ objectId, productId, fileName })),
       };
     } catch (error) {
       return { objectId, files: [], error: error.message || "EAS XML export failed" };

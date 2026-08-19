@@ -16,7 +16,7 @@ Single-page static web app version of `download_eas_script.py`.
 - Stops at the server-selected product limit (default: 1000); it does not first retrieve every matching product
 - Renders each result as an actual DSS download URL: `https://euclidsoc.esac.esa.int/<FileName>`
 - Lets users select matching DSS files, then packages selected files in one zip
-- Generates the equivalent Python command for terminal use
+- Generates Python or shell download commands for selected DSS files
 
 ## Large queries
 
@@ -31,7 +31,8 @@ Leave **Query String** empty to match all products of selected data-product clas
 adds EAS filter `Header.ProductId.LimitedString!=""`, required because EAS rejects an empty search statement.
 
 Result links are DSS file URLs. **Download Selected** fetches selected DSS files through the configured proxy and creates
-one zip. The deployed proxy must allow `euclidsoc.esac.esa.int` and forward `Pragma: DSSGET` for DSS requests.
+one zip. **Download Selected XML** fetches the EAS `/XML` export for each selected product and creates a separate XML
+zip. The deployed proxy must allow `euclidsoc.esac.esa.int` and forward `Pragma: DSSGET` for DSS requests.
 It must also allow `eas-dps-cus-ops.esac.esa.int` for server-limited DbView and XML-export queries. **Stop Query**
 aborts browser requests. XML export does not submit background EAS jobs.
 
@@ -58,13 +59,10 @@ python3 -m http.server 8000
 Then open [http://localhost:8000](http://localhost:8000). Deploy the Worker after changing it; an already-deployed
 Worker keeps its previous host and origin allowlists.
 
-The equivalent Python command accepts the same setting:
-
-```bash
-python download_eas_script.py ... --query_chunk_size 100
-```
-
-The Python command chunks EAS metadata retrieval. Browser-side DSS file selection applies only to the launcher page.
+After query results appear, every file is selected by default. The **Selected-file download command** panel contains only
+the selected DSS file URLs. Toggle its button between a Python command and a shell `curl` command; both require
+`EAS_USERNAME` and `EAS_PASSWORD` to be set in the terminal and send `Pragma: DSSGET`. The panel stays empty until a
+result selection exists, then updates whenever selection changes.
 
 ## Publish on GitHub Pages
 

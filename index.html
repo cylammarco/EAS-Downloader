@@ -456,7 +456,6 @@
           <div class="actions">
             <button id="submitBtn" class="primary-btn" type="submit">Run Query</button>
             <button id="stopQueryBtn" class="ghost-btn" type="button" disabled>Stop Query</button>
-            <button id="commandBtn" class="ghost-btn" type="button">Build Python Command</button>
           </div>
         </form>
 
@@ -472,18 +471,23 @@
             <button id="selectAllBtn" class="ghost-btn" type="button">Select All</button>
             <button id="clearSelectionBtn" class="ghost-btn" type="button">Clear Selection</button>
             <button id="downloadSelectedBtn" class="primary-btn" type="button" disabled>Download Selected</button>
+            <button id="downloadSelectedXmlBtn" class="ghost-btn" type="button" disabled>Download Selected XML</button>
           </div>
           <div id="downloadList" class="download-list"></div>
           <p class="hint">
             Links point to DSS data files. Open one link directly, or use selected download to retrieve files through
-            this page's proxy and package them as a zip.
+            this page's proxy and package them as a zip. Download Selected XML packages one EAS XML export for each
+            selected product.
           </p>
         </section>
 
         <div class="command">
-          <strong>Equivalent Python bulk-metadata command</strong>
-          <pre id="commandOutput">No command generated yet.</pre>
-          <p class="hint">Python command chunks metadata retrieval. This page lists and downloads DSS files.</p>
+          <strong>Selected-file download command</strong>
+          <div class="actions">
+            <button id="commandFormatBtn" class="ghost-btn" type="button" disabled>Format: Python</button>
+          </div>
+          <pre id="commandOutput">Select files to generate a download command.</pre>
+          <p class="hint">All query results start selected. Command updates only when selection changes. Set EAS_USERNAME and EAS_PASSWORD in your terminal first.</p>
         </div>
 
         <p class="footnote">
@@ -520,7 +524,7 @@
       const form = document.getElementById("easForm");
       const submitBtn = document.getElementById("submitBtn");
       const stopQueryBtn = document.getElementById("stopQueryBtn");
-      const commandBtn = document.getElementById("commandBtn");
+      const commandFormatBtn = document.getElementById("commandFormatBtn");
       const togglePasswordBtn = document.getElementById("togglePassword");
       const downloadPanel = document.getElementById("downloadPanel");
       const downloadSummary = document.getElementById("downloadSummary");
@@ -528,6 +532,7 @@
       const selectAllBtn = document.getElementById("selectAllBtn");
       const clearSelectionBtn = document.getElementById("clearSelectionBtn");
       const downloadSelectedBtn = document.getElementById("downloadSelectedBtn");
+      const downloadSelectedXmlBtn = document.getElementById("downloadSelectedXmlBtn");
 
       const statusText = document.getElementById("statusText");
       const errorText = document.getElementById("errorText");
@@ -546,6 +551,7 @@
       let querySession = null;
       let downloadInProgress = false;
       let activeQueryAbortController = null;
+      let commandFormat = "python";
 
       function updateStatus(message) {
         statusText.textContent = message;
@@ -851,6 +857,17 @@
         return buildDownloadableFileLookupUrl(dataProduct, `object_id=${objectId}`, project);
       }
 
+      function buildObjectXmlExportUrl(dataProduct, objectId, project) {
+        if (!objectId) {
+          throw new Error("Cannot export an empty EAS object ID.");
+        }
+        const targetUrl = new URL(`${DB_VIEW_ORIGIN}/XML`);
+        targetUrl.searchParams.set("class_str", dataProduct);
+        targetUrl.searchParams.set("object_id", objectId);
+        targetUrl.searchParams.set("project", project);
+        return targetUrl.toString();
+      }
+
       function parseQueryChunkSize(value) {
         return parsePositiveInteger(value, "Query chunk size");
       }
@@ -995,6 +1012,10 @@
         downloadSummary.textContent = "";
         downloadSelectedBtn.disabled = true;
         downloadSelectedBtn.textContent = "Download Selected";
+        downloadSelectedXmlBtn.disabled = true;
+        downloadSelectedXmlBtn.textContent = "Download Selected XML";
+        commandFormatBtn.disabled = true;
+        commandOutput.textContent = "Select files to generate a download command.";
       }
 
       function getSelectedFiles() {
@@ -1007,15 +1028,91 @@
           .filter(Boolean);
       }
 
+      function updateCommandFormatButton() {
+        commandFormatBtn.textContent = `Format: ${commandFormat === "python" ? "Python" : "Shell"}`;
+      }
+
+      function buildPythonDownloadCommand(selectedFiles) {
+        const urls = JSON.stringify(selectedFiles.map((file) => file.url), null, 2);
+        return [
+          "# Export EAS_USERNAME and EAS_PASSWORD before running this command.",
+          "python3 - <<'PY'",
+          "import base64",
+          "import os",
+          "from pathlib import Path",
+          "from urllib.request import Request, urlopen",
+          "",
+          'username = os.environ["EAS_USERNAME"]',
+          'password = os.environ["EAS_PASSWORD"]',
+          'authorization = "Basic " + base64.b64encode(f"{username}:{password}".encode("utf-8")).decode("ascii")',
+          `urls = ${urls}`,
+          'output_dir = Path("eas-downloads")',
+          "output_dir.mkdir(exist_ok=True)",
+          "",
+          "for url in urls:",
+          "    output_path = output_dir / url.rsplit('/', 1)[-1]",
+          '    request = Request(url, headers={"Authorization": authorization, "Pragma": "DSSGET"})',
+          "    with urlopen(request) as response, output_path.open(\"wb\") as output:",
+          "        output.write(response.read())",
+          "    print(f\"Downloaded {output_path}\")",
+          "PY",
+        ].join("\n");
+      }
+
+      function buildShellDownloadCommand(selectedFiles) {
+        const urls = selectedFiles.map((file, index) => {
+          const continuation = index === selectedFiles.length - 1 ? "" : " \\";
+          return `  ${shellQuote(file.url)}${continuation}`;
+        });
+        return [
+          "# Export EAS_USERNAME and EAS_PASSWORD before running this command.",
+          ': "${EAS_USERNAME:?Set EAS_USERNAME first}"',
+          ': "${EAS_PASSWORD:?Set EAS_PASSWORD first}"',
+          "mkdir -p eas-downloads",
+          "cd eas-downloads",
+          "curl --fail --location --remote-name \\",
+          '  --user "$EAS_USERNAME:$EAS_PASSWORD" \\',
+          '  --header "Pragma: DSSGET" \\',
+          ...urls,
+        ].join("\n");
+      }
+
+      function updateSelectedDownloadCommand(selectedFiles = getSelectedFiles()) {
+        updateCommandFormatButton();
+        commandFormatBtn.disabled = !querySession || downloadInProgress;
+        if (!querySession) {
+          commandOutput.textContent = "Select files to generate a download command.";
+          return;
+        }
+        if (!selectedFiles.length) {
+          commandOutput.textContent = "Select at least one file to generate a download command.";
+          return;
+        }
+        commandOutput.textContent = commandFormat === "python"
+          ? buildPythonDownloadCommand(selectedFiles)
+          : buildShellDownloadCommand(selectedFiles);
+      }
+
       function updateDownloadSelection() {
         const selectedCount = getSelectedFiles().length;
+        const selectedXmlCount = new Set(
+          getSelectedFiles()
+            .map((file) => String(file.objectId || "").trim())
+            .filter(Boolean)
+        ).size;
         downloadSelectedBtn.disabled = !querySession || !selectedCount || downloadInProgress;
         downloadSelectedBtn.textContent = selectedCount ? `Download Selected (${selectedCount})` : "Download Selected";
+        downloadSelectedXmlBtn.disabled = !querySession || !selectedXmlCount || downloadInProgress;
+        downloadSelectedXmlBtn.textContent = selectedXmlCount
+          ? `Download Selected XML (${selectedXmlCount})`
+          : "Download Selected XML";
+        updateSelectedDownloadCommand();
       }
 
       function setDownloadControlsDisabled(disabled) {
         selectAllBtn.disabled = disabled;
         clearSelectionBtn.disabled = disabled;
+        downloadSelectedXmlBtn.disabled = disabled;
         downloadList.querySelectorAll('input[type="checkbox"]').forEach((checkbox) => {
           checkbox.disabled = disabled;
         });
@@ -1025,8 +1122,8 @@
         downloadList.replaceChildren();
         const resultCount = session.files.length;
         downloadSummary.textContent = session.reachedMaximum
-          ? `EAS selected first ${session.maximumFiles} matching products server-side; ${resultCount} downloadable files found. Select files to download.`
-          : `${resultCount} downloadable file${resultCount === 1 ? "" : "s"} found. Select files to download.`;
+          ? `EAS selected first ${session.maximumFiles} matching products server-side; ${resultCount} downloadable files found. All files selected.`
+          : `${resultCount} downloadable file${resultCount === 1 ? "" : "s"} found. All files selected.`;
 
         session.files.forEach((file, index) => {
           const item = document.createElement("div");
@@ -1036,6 +1133,7 @@
           checkbox.id = `download-product-${index}`;
           checkbox.type = "checkbox";
           checkbox.value = String(index);
+          checkbox.checked = true;
           checkbox.addEventListener("change", updateDownloadSelection);
 
           const label = document.createElement("label");
@@ -1194,6 +1292,7 @@
             return items;
           }
           items.push({
+            objectId: String(file?.objectId || "").trim(),
             productId: String(file?.productId || "").trim(),
             fileName,
             url: buildDssDownloadUrl(fileName),
@@ -1362,7 +1461,6 @@
         updateDownloadSelection();
         setQueryInputsDisabled(true);
         submitBtn.disabled = true;
-        commandBtn.disabled = true;
 
         try {
           if (typeof JSZip === "undefined") {
@@ -1405,7 +1503,77 @@
           updateDownloadSelection();
           setQueryInputsDisabled(false);
           submitBtn.disabled = false;
-          commandBtn.disabled = false;
+        }
+      }
+
+      async function downloadSelectedXmlFiles() {
+        if (!querySession) {
+          updateError("Run a query before downloading XML files.");
+          return;
+        }
+
+        const selectedProducts = Array.from(
+          new Map(
+            getSelectedFiles()
+              .filter((file) => String(file.objectId || "").trim())
+              .map((file) => [file.objectId, file])
+          ).values()
+        );
+        if (!selectedProducts.length) {
+          updateError("Select at least one file with an EAS object ID to download XML files.");
+          return;
+        }
+
+        updateError("");
+        downloadInProgress = true;
+        setDownloadControlsDisabled(true);
+        updateDownloadSelection();
+        setQueryInputsDisabled(true);
+        submitBtn.disabled = true;
+
+        try {
+          if (typeof JSZip === "undefined") {
+            throw new Error("JSZip is not available. Cannot package selected XML files.");
+          }
+
+          const zip = new JSZip();
+          const usedNames = new Set();
+
+          for (const [index, file] of selectedProducts.entries()) {
+            updateStatus(`Downloading XML ${index + 1}/${selectedProducts.length}...`);
+            const xmlBlob = await fetchBlob(
+              buildObjectXmlExportUrl(querySession.dataProduct, file.objectId, querySession.project),
+              querySession.auth
+            );
+            const xmlName = `${file.productId || file.objectId}.xml`;
+            zip.file(makeUniqueZipEntryName(xmlName, index, usedNames), xmlBlob);
+          }
+
+          const safeDataProduct = querySession.dataProduct.replace(/[^a-zA-Z0-9._-]/g, "_") || "metadata";
+          const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+          const outputName = `${safeDataProduct}-${timestamp}-xml.zip`;
+
+          updateStatus(`Packaging ${selectedProducts.length} selected XML file${selectedProducts.length === 1 ? "" : "s"}...`);
+          const zipBlob = await zip.generateAsync({
+            type: "blob",
+            compression: "STORE",
+          });
+          downloadBlob(zipBlob, outputName);
+          updateStatus(`Done. Downloaded ${outputName}.`);
+        } catch (error) {
+          console.error("EAS XML download request failed", {
+            error,
+            dataProduct: querySession.dataProduct,
+            project: querySession.project,
+          });
+          updateError(error.message || String(error));
+          updateStatus("XML download failed.");
+        } finally {
+          downloadInProgress = false;
+          setDownloadControlsDisabled(false);
+          updateDownloadSelection();
+          setQueryInputsDisabled(false);
+          submitBtn.disabled = false;
         }
       }
 
@@ -1413,47 +1581,20 @@
         return `'${String(value).replace(/'/g, `'"'"'`)}'`;
       }
 
-      function buildCommand() {
-        const username = usernameInput.value.trim();
-        const password = passwordInput.value;
-        const project = projectInput.value;
-        const dataProduct = dataProductInput.value.trim();
-        const query = queryInput.value.trim();
-        const queryChunkSize = queryChunkSizeInput.value.trim() || String(DEFAULT_QUERY_CHUNK_SIZE);
-
-        const command = [
-          "python download_eas_script.py",
-          `--username ${shellQuote(username || "<username>")}`,
-          `--password ${shellQuote(password || "<password>")}`,
-          `--project ${shellQuote(project)}`,
-          `--data_product ${shellQuote(dataProduct || "<data_product>")}`,
-          `--query ${shellQuote(query)}`,
-          `--query_chunk_size ${shellQuote(queryChunkSize)}`,
-        ].join(" ");
-
-        commandOutput.textContent = command;
-      }
-
       dataProductTypeInput.addEventListener("change", () => {
         populateDataProductMenu();
-        buildCommand();
         clearQueryResults();
       });
 
       dataProductInput.addEventListener("change", () => {
         updateDataProductDocLink();
-        buildCommand();
         clearQueryResults();
       });
 
       projectInput.addEventListener("change", () => {
-        buildCommand();
         clearQueryResults();
       });
-      queryChunkSizeInput.addEventListener("input", () => {
-        buildCommand();
-        clearQueryResults();
-      });
+      queryChunkSizeInput.addEventListener("input", clearQueryResults);
       maximumFilesInput.addEventListener("input", clearQueryResults);
       usernameInput.addEventListener("input", clearQueryResults);
       passwordInput.addEventListener("input", clearQueryResults);
@@ -1467,12 +1608,11 @@
 
       sortSelectOptions(dataProductTypeInput);
       populateDataProductMenu();
-      buildCommand();
+      updateCommandFormatButton();
 
-      commandBtn.addEventListener("click", () => {
-        buildCommand();
-        updateError("");
-        updateStatus("Equivalent Python command generated.");
+      commandFormatBtn.addEventListener("click", () => {
+        commandFormat = commandFormat === "python" ? "shell" : "python";
+        updateSelectedDownloadCommand();
       });
 
       selectAllBtn.addEventListener("click", () => {
@@ -1490,6 +1630,7 @@
       });
 
       downloadSelectedBtn.addEventListener("click", downloadSelectedFiles);
+      downloadSelectedXmlBtn.addEventListener("click", downloadSelectedXmlFiles);
 
       stopQueryBtn.addEventListener("click", () => {
         if (!activeQueryAbortController) {
@@ -1521,12 +1662,10 @@
         try {
           const queryChunkSize = parseQueryChunkSize(queryChunkSizeInput.value);
           const maximumFiles = parseMaximumFiles(maximumFilesInput.value || String(DEFAULT_MAXIMUM_FILES));
-          buildCommand();
           clearQueryResults();
 
           setQueryInputsDisabled(true);
           submitBtn.disabled = true;
-          commandBtn.disabled = true;
           stopQueryBtn.disabled = false;
 
           const auth = encodeAuth(username, password);
@@ -1613,7 +1752,6 @@
           }
           setQueryInputsDisabled(false);
           submitBtn.disabled = false;
-          commandBtn.disabled = false;
           stopQueryBtn.disabled = true;
         }
       });
