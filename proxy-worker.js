@@ -61,6 +61,21 @@ function jsonResponse(request, status, payload) {
   });
 }
 
+function normalizeBasicAuth(value) {
+  const rawValue = String(value || "").trim();
+  const encodedValue = rawValue.replace(/^Basic\s+/i, "");
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(encodedValue) || encodedValue.length % 4 === 1) {
+    return null;
+  }
+
+  try {
+    atob(encodedValue);
+  } catch (_error) {
+    return null;
+  }
+  return `Basic ${encodedValue}`;
+}
+
 function isAllowedTarget(target) {
   return target.protocol === "https:" && (ALLOWED_HOSTS.has(target.hostname) || EAS_REST_NODE_HOST_RE.test(target.hostname));
 }
@@ -209,8 +224,8 @@ export default {
       return jsonError(request, 400, "Invalid JSON request body");
     }
 
-    const authHeaderValue = String(payload.authHeaderValue || "");
-    if (!/^Basic\s+[A-Za-z0-9+/=]+$/.test(authHeaderValue)) {
+    const authHeaderValue = normalizeBasicAuth(payload.authHeaderValue);
+    if (!authHeaderValue) {
       return jsonError(request, 400, "Invalid Basic authentication header");
     }
 

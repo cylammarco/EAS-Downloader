@@ -22,6 +22,9 @@ class QueryAndDownloadUiTest(unittest.TestCase):
         self.assertIn('const MATCH_ALL_PRODUCT_ID_FILTER_KEY = `${PRODUCT_ID_FIELD}!`;', INDEX_HTML)
         self.assertIn('searchParams.append(MATCH_ALL_PRODUCT_ID_FILTER_KEY, MATCH_ALL_PRODUCT_ID_FILTER_VALUE);', INDEX_HTML)
 
+    def test_browser_sends_a_complete_basic_authentication_header(self):
+        self.assertIn('return `Basic ${btoa(binary)}`;', INDEX_HTML)
+
     def test_data_product_dropdowns_sort_alphabetically(self):
         self.assertIn("function sortSelectOptions(select)", INDEX_HTML)
         self.assertIn("ALPHABETICAL_COLLATOR.compare(left.textContent, right.textContent)", INDEX_HTML)

@@ -670,7 +670,7 @@
         bytes.forEach((b) => {
           binary += String.fromCharCode(b);
         });
-        return btoa(binary);
+        return `Basic ${btoa(binary)}`;
       }
 
       function parseResponsePayload(text) {

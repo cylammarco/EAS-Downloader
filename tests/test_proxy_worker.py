@@ -31,6 +31,11 @@ class ProxyWorkerTest(unittest.TestCase):
         self.assertIn('if (target.hostname === DSS_HOST && payload.requestHeaders?.Pragma === "DSSGET")', WORKER)
         self.assertIn('headers.set("Pragma", "DSSGET");', WORKER)
 
+    def test_proxy_normalizes_legacy_base64_and_complete_basic_headers(self):
+        self.assertIn("function normalizeBasicAuth(value)", WORKER)
+        self.assertIn('rawValue.replace(/^Basic\\s+/i, "")', WORKER)
+        self.assertIn("const authHeaderValue = normalizeBasicAuth(payload.authHeaderValue);", WORKER)
+
     def test_proxy_rejects_unapproved_target_hosts(self):
         self.assertIn("if (!isAllowedTarget(target))", WORKER)
         self.assertIn("Proxy target URL allowlist blocked", WORKER)
