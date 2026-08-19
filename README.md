@@ -37,7 +37,7 @@ aborts browser requests. XML export does not submit background EAS jobs.
 
 ## Proxy Worker
 
-This repository includes [proxy-worker.js](proxy-worker.js) and [wrangler.toml](wrangler.toml). The Worker allows only
+This repository includes [proxy-worker.js](proxy-worker.js) and [wrangler.jsonc](wrangler.jsonc). The Worker allows only
 the EAS REST hosts, `eas-dps-cus-ops.esac.esa.int`, and `euclidsoc.esac.esa.int`; it batches up to 20 EAS XML exports
 inside one browser request and forwards `Pragma: DSSGET` only to
 the DSS host. It accepts browser origins from GitHub Pages plus `http://localhost`, `http://127.0.0.1`, and IPv6

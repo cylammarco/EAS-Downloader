@@ -1,14 +1,9 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "eas-downloader",
-  "compatibility_date": "2026-05-06",
+  "name": "eas-downloader-proxy",
+  "main": "proxy-worker.js",
+  "compatibility_date": "2026-08-19",
   "observability": {
     "enabled": true
-  },
-  "assets": {
-    "directory": "."
-  },
-  "compatibility_flags": [
-    "nodejs_compat"
-  ]
+  }
 }
