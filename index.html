@@ -239,6 +239,49 @@
         margin-top: 1rem;
       }
 
+      .command-format {
+        display: flex;
+        align-items: center;
+        gap: 0.65rem;
+        margin-top: 0.45rem;
+      }
+
+      .command-format-label {
+        font-weight: 700;
+      }
+
+      .format-toggle {
+        display: inline-flex;
+        overflow: hidden;
+        border: 1px solid #ddcfb3;
+        border-radius: 999px;
+      }
+
+      .format-option {
+        border: 0;
+        border-right: 1px solid #ddcfb3;
+        padding: 0.48rem 0.8rem;
+        font: inherit;
+        font-weight: 700;
+        color: var(--ink-soft);
+        background: #f5f2e8;
+        cursor: pointer;
+      }
+
+      .format-option:last-child {
+        border-right: 0;
+      }
+
+      .format-option.is-active {
+        color: #fff;
+        background: var(--accent-2);
+      }
+
+      .format-option:disabled {
+        cursor: default;
+        opacity: 0.6;
+      }
+
       .download-panel {
         margin-top: 1rem;
         padding-top: 1rem;
@@ -483,9 +526,14 @@
 
         <div class="command">
           <strong>Selected-file download command</strong>
-          <div class="actions">
-            <button id="commandFormatBtn" class="ghost-btn" type="button" disabled>Format: Python</button>
+          <div class="command-format" role="group" aria-label="Selected file command format">
+            <span class="command-format-label">Format</span>
+            <span class="format-toggle">
+              <button id="commandFormatPythonBtn" class="format-option is-active" type="button" aria-pressed="true" disabled>Python</button>
+              <button id="commandFormatShellBtn" class="format-option" type="button" aria-pressed="false" disabled>Shell</button>
+            </span>
           </div>
+          <p id="commandDescription" class="hint">If you would like to download these selected files again, use the Python script below.</p>
           <pre id="commandOutput">Select files to generate a download command.</pre>
           <p class="hint">All query results start selected. Command updates only when selection changes. Set EAS_USERNAME and EAS_PASSWORD in your terminal first.</p>
         </div>
@@ -524,7 +572,8 @@
       const form = document.getElementById("easForm");
       const submitBtn = document.getElementById("submitBtn");
       const stopQueryBtn = document.getElementById("stopQueryBtn");
-      const commandFormatBtn = document.getElementById("commandFormatBtn");
+      const commandFormatPythonBtn = document.getElementById("commandFormatPythonBtn");
+      const commandFormatShellBtn = document.getElementById("commandFormatShellBtn");
       const togglePasswordBtn = document.getElementById("togglePassword");
       const downloadPanel = document.getElementById("downloadPanel");
       const downloadSummary = document.getElementById("downloadSummary");
@@ -537,6 +586,7 @@
       const statusText = document.getElementById("statusText");
       const errorText = document.getElementById("errorText");
       const commandOutput = document.getElementById("commandOutput");
+      const commandDescription = document.getElementById("commandDescription");
 
       const passwordInput = document.getElementById("password");
       const usernameInput = document.getElementById("username");
@@ -1014,7 +1064,7 @@
         downloadSelectedBtn.textContent = "Download Selected";
         downloadSelectedXmlBtn.disabled = true;
         downloadSelectedXmlBtn.textContent = "Download Selected XML";
-        commandFormatBtn.disabled = true;
+        updateCommandFormatControls();
         commandOutput.textContent = "Select files to generate a download command.";
       }
 
@@ -1028,14 +1078,24 @@
           .filter(Boolean);
       }
 
-      function updateCommandFormatButton() {
-        commandFormatBtn.textContent = `Format: ${commandFormat === "python" ? "Python" : "Shell"}`;
+      function updateCommandFormatControls() {
+        const pythonSelected = commandFormat === "python";
+        const disabled = !querySession || downloadInProgress;
+        commandFormatPythonBtn.classList.toggle("is-active", pythonSelected);
+        commandFormatPythonBtn.setAttribute("aria-pressed", String(pythonSelected));
+        commandFormatPythonBtn.disabled = disabled;
+        commandFormatShellBtn.classList.toggle("is-active", !pythonSelected);
+        commandFormatShellBtn.setAttribute("aria-pressed", String(!pythonSelected));
+        commandFormatShellBtn.disabled = disabled;
+        commandDescription.textContent = pythonSelected
+          ? "If you would like to download these selected files again, use the Python script below."
+          : "If you would like to download these selected files again, use the shell command below.";
       }
 
       function buildPythonDownloadCommand(selectedFiles) {
         const urls = JSON.stringify(selectedFiles.map((file) => file.url), null, 2);
         return [
-          "# Export EAS_USERNAME and EAS_PASSWORD before running this command.",
+          "# To download these selected files again, run this script after exporting EAS_USERNAME and EAS_PASSWORD.",
           "python3 - <<'PY'",
           "import base64",
           "import os",
@@ -1065,7 +1125,7 @@
           return `  ${shellQuote(file.url)}${continuation}`;
         });
         return [
-          "# Export EAS_USERNAME and EAS_PASSWORD before running this command.",
+          "# To download these selected files again, run this command after exporting EAS_USERNAME and EAS_PASSWORD.",
           ': "${EAS_USERNAME:?Set EAS_USERNAME first}"',
           ': "${EAS_PASSWORD:?Set EAS_PASSWORD first}"',
           "mkdir -p eas-downloads",
@@ -1078,8 +1138,7 @@
       }
 
       function updateSelectedDownloadCommand(selectedFiles = getSelectedFiles()) {
-        updateCommandFormatButton();
-        commandFormatBtn.disabled = !querySession || downloadInProgress;
+        updateCommandFormatControls();
         if (!querySession) {
           commandOutput.textContent = "Select files to generate a download command.";
           return;
@@ -1608,10 +1667,15 @@
 
       sortSelectOptions(dataProductTypeInput);
       populateDataProductMenu();
-      updateCommandFormatButton();
+      updateCommandFormatControls();
 
-      commandFormatBtn.addEventListener("click", () => {
-        commandFormat = commandFormat === "python" ? "shell" : "python";
+      commandFormatPythonBtn.addEventListener("click", () => {
+        commandFormat = "python";
+        updateSelectedDownloadCommand();
+      });
+
+      commandFormatShellBtn.addEventListener("click", () => {
+        commandFormat = "shell";
         updateSelectedDownloadCommand();
       });
 

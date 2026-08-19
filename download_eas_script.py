@@ -294,7 +294,8 @@ def downloadDssFile(base_url, fname, username=None, password=None):
     del conn
 
 
-def saveMetaAndData(products, username=None, password=None, product_type="UNKNOWN"):
+def saveMetaAndData(products, username=None, password=None, product_type="UNKNOWN", output_directory="."):
+    os.makedirs(output_directory, exist_ok=True)
     count = 0
     for p in products:
         # findProductId = etree.XPath("//ProductId")
@@ -316,8 +317,9 @@ def saveMetaAndData(products, username=None, password=None, product_type="UNKNOW
             else:
                 pid = str(count)
         pfile = ptype[0].upper() + ptype[1:] + "__" + pid + ".xml"
-        print("Saving " + pfile)
-        with open(pfile, "w") as f:
+        output_path = os.path.join(output_directory, pfile)
+        print("Saving " + output_path)
+        with open(output_path, "w") as f:
             f.write(p)
 
         files = [f.text for f in root.findall(".//FileName")]
@@ -355,6 +357,16 @@ if __name__ == "__main__":
         type=int,
         default=100,
         help="Number of matching product IDs per EAS metadata request (default: 100)",
+    )
+    parser.add_argument(
+        "--download_xml",
+        action="store_true",
+        help="Save XML metadata returned for every matching product",
+    )
+    parser.add_argument(
+        "--xml_output_dir",
+        default="eas-xml",
+        help="Directory for --download_xml output (default: eas-xml)",
     )
 
     args = parser.parse_args()
@@ -402,4 +414,7 @@ if __name__ == "__main__":
         )
         products.extend(chunk_products)
 
-    saveMetaAndData(products, username, password, args.data_product)
+    if args.download_xml:
+        saveMetaAndData(products, username, password, args.data_product, args.xml_output_dir)
+    else:
+        print("XML metadata retrieved but not saved. Add --download_xml to save XML files.")

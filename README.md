@@ -60,9 +60,18 @@ Then open [http://localhost:8000](http://localhost:8000). Deploy the Worker afte
 Worker keeps its previous host and origin allowlists.
 
 After query results appear, every file is selected by default. The **Selected-file download command** panel contains only
-the selected DSS file URLs. Toggle its button between a Python command and a shell `curl` command; both require
-`EAS_USERNAME` and `EAS_PASSWORD` to be set in the terminal and send `Pragma: DSSGET`. The panel stays empty until a
-result selection exists, then updates whenever selection changes.
+the selected DSS file URLs. Its visible **Format** control selects Python or shell `curl`; both require `EAS_USERNAME`
+and `EAS_PASSWORD` to be set in the terminal and send `Pragma: DSSGET`. The panel explains that the generated command
+can download those selected files again. It stays empty until a result selection exists, then updates whenever selection
+changes.
+
+The command-line Python tool can save XML metadata returned by the query:
+
+```bash
+python3 download_eas_script.py --username USER --data_product DpdVisCalibratedQuadFrame --download_xml
+```
+
+Use `--xml_output_dir DIRECTORY` to choose output directory; default is `eas-xml`.
 
 ## Publish on GitHub Pages
 

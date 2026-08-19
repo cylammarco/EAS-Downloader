@@ -1,5 +1,6 @@
 import importlib.util
 from pathlib import Path
+import tempfile
 import unittest
 
 
@@ -48,6 +49,26 @@ class QueryChunkingTest(unittest.TestCase):
         self.assertIn("make_asy=True", query)
         self.assertIn('Header.ProductId.LimitedString!=""', query)
         self.assertNotIn("&&", query)
+
+    def test_save_metadata_xml_writes_to_requested_output_directory(self):
+        product_xml = """<Product><ProductId>product-123</ProductId><FileName>data.fits</FileName></Product>"""
+        with tempfile.TemporaryDirectory() as output_directory:
+            DOWNLOADER.saveMetaAndData(
+                [product_xml],
+                product_type="DpdVisCalibratedQuadFrame",
+                output_directory=output_directory,
+            )
+
+            output_file = Path(output_directory) / "DpdVisCalibratedQuadFrame__product-123.xml"
+            self.assertTrue(output_file.is_file())
+            self.assertEqual(output_file.read_text(), product_xml)
+
+    def test_script_exposes_xml_download_option(self):
+        source = MODULE_PATH.read_text()
+
+        self.assertIn('"--download_xml"', source)
+        self.assertIn('"--xml_output_dir"', source)
+        self.assertIn("if args.download_xml:", source)
 
 
 if __name__ == "__main__":

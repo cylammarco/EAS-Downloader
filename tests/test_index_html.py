@@ -41,14 +41,19 @@ class QueryAndDownloadUiTest(unittest.TestCase):
         self.assertIn('directLink.textContent = "Download link";', INDEX_HTML)
 
     def test_selected_file_command_defaults_to_python_and_can_toggle_to_shell(self):
-        self.assertIn('id="commandFormatBtn"', INDEX_HTML)
+        self.assertIn('class="command-format-label">Format</span>', INDEX_HTML)
+        self.assertIn('id="commandFormatPythonBtn"', INDEX_HTML)
+        self.assertIn('id="commandFormatShellBtn"', INDEX_HTML)
         self.assertIn('let commandFormat = "python";', INDEX_HTML)
+        self.assertIn("function updateCommandFormatControls()", INDEX_HTML)
         self.assertIn("function buildPythonDownloadCommand(selectedFiles)", INDEX_HTML)
         self.assertIn("function buildShellDownloadCommand(selectedFiles)", INDEX_HTML)
         self.assertIn('"Pragma": "DSSGET"', INDEX_HTML)
         self.assertIn('EAS_USERNAME', INDEX_HTML)
         self.assertIn('EAS_PASSWORD', INDEX_HTML)
-        self.assertIn('commandFormat = commandFormat === "python" ? "shell" : "python";', INDEX_HTML)
+        self.assertIn('commandFormat = "python";', INDEX_HTML)
+        self.assertIn('commandFormat = "shell";', INDEX_HTML)
+        self.assertIn("If you would like to download these selected files again, use the Python script below.", INDEX_HTML)
 
     def test_results_start_selected_and_selection_populates_command(self):
         self.assertIn("checkbox.checked = true;", INDEX_HTML)
