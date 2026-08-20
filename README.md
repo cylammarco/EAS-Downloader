@@ -1,4 +1,4 @@
-# EAS Query Page
+# EAS Downloader
 
 Single-page static web app [https://cylammarco.github.io/EAS-Downloader/](https://cylammarco.github.io/EAS-Downloader/)
 

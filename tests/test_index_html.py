@@ -7,6 +7,46 @@ INDEX_HTML = (Path(__file__).resolve().parents[1] / "index.html").read_text()
 
 
 class QueryAndDownloadUiTest(unittest.TestCase):
+    def test_page_has_dark_first_branded_header_and_footer(self):
+        self.assertIn('<html lang="en" data-theme="dark">', INDEX_HTML)
+        self.assertIn('<title>EAS Downloader</title>', INDEX_HTML)
+        self.assertIn('<header class="site-header">', INDEX_HTML)
+        self.assertIn('<h1 class="brand-name">EAS Downloader</h1>', INDEX_HTML)
+        self.assertIn('src="./images/University%20of%20Edinburgh%20Logo.png"', INDEX_HTML)
+        self.assertIn('src="./images/Euclid_consortium_logo.png"', INDEX_HTML)
+        self.assertIn('<footer class="site-footer">', INDEX_HTML)
+
+    def test_footer_includes_requested_reference_and_github_links(self):
+        self.assertIn('href="https://eas-dps-cus-ops.esac.esa.int/"', INDEX_HTML)
+        self.assertIn('href="http://st-dm.pages.euclid-sgs.uk/ST_DataModel/10.0.2/"', INDEX_HTML)
+        self.assertIn('href="http://st-dm.pages.euclid-sgs.uk/data-product-doc/dm10/"', INDEX_HTML)
+        self.assertIn('href="https://github.com/cylammarco/EAS-Downloader"', INDEX_HTML)
+        self.assertIn('class="github-button"', INDEX_HTML)
+        self.assertIn('class="github-star-control"', INDEX_HTML)
+        self.assertIn('src="./images/GitHub-Mark.png"', INDEX_HTML)
+        self.assertIn('data-icon="octicon-star-fill"', INDEX_HTML)
+        self.assertIn('data-show-count="true"', INDEX_HTML)
+        self.assertIn('src="https://buttons.github.io/buttons.js"', INDEX_HTML)
+
+    def test_footer_is_centered_and_visual_layout_uses_wider_dark_plain_background(self):
+        self.assertIn("justify-content: center;", INDEX_HTML)
+        self.assertIn("width: min(1176px, calc(100% - 2.4rem));", INDEX_HTML)
+        self.assertIn("background: var(--page);", INDEX_HTML)
+        self.assertIn(':root[data-theme="light"] body {', INDEX_HTML)
+        self.assertNotIn(".github-link {", INDEX_HTML)
+        self.assertNotIn("border-right: 1px solid var(--line-subtle);", INDEX_HTML)
+        self.assertIn("@media (max-width: 980px)", INDEX_HTML)
+        self.assertIn("@media (max-width: 760px)", INDEX_HTML)
+
+    def test_theme_toggle_defaults_to_dark_on_every_page_load(self):
+        self.assertIn('id="themeToggle"', INDEX_HTML)
+        self.assertIn('function applyTheme(theme)', INDEX_HTML)
+        self.assertIn('function toggleTheme()', INDEX_HTML)
+        self.assertNotIn('localStorage.getItem("eas-downloader-theme")', INDEX_HTML)
+        self.assertNotIn('localStorage.setItem(THEME_STORAGE_KEY, nextTheme);', INDEX_HTML)
+        self.assertIn('applyTheme("dark");', INDEX_HTML)
+        self.assertIn('themeToggleBtn.addEventListener("click", toggleTheme);', INDEX_HTML)
+
     def test_query_and_download_are_separate_actions(self):
         self.assertIn('id="submitBtn" class="primary-btn" type="submit">Run Query</button>', INDEX_HTML)
         self.assertIn('id="stopQueryBtn" class="ghost-btn" type="button" disabled>Stop Query</button>', INDEX_HTML)
