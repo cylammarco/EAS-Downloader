@@ -11,7 +11,7 @@ class QueryAndDownloadUiTest(unittest.TestCase):
         self.assertIn('id="submitBtn" class="primary-btn" type="submit">Run Query</button>', INDEX_HTML)
         self.assertIn('id="stopQueryBtn" class="ghost-btn" type="button" disabled>Stop Query</button>', INDEX_HTML)
         self.assertIn('id="downloadSelectedBtn" class="primary-btn" type="button" disabled>Download Selected</button>', INDEX_HTML)
-        self.assertIn('id="downloadSelectedXmlBtn" class="ghost-btn" type="button" disabled>Download Selected XML</button>', INDEX_HTML)
+        self.assertIn('id="downloadSelectedXmlBtn" class="ghost-btn" type="button" disabled>Download Matching XML</button>', INDEX_HTML)
 
     def test_empty_query_is_allowed_as_match_all(self):
         self.assertIn('placeholder="Leave empty to match all files', INDEX_HTML)
@@ -77,10 +77,10 @@ class QueryAndDownloadUiTest(unittest.TestCase):
         self.assertIn('commandDownloadMode = "data";', INDEX_HTML)
         self.assertIn('commandDownloadMode = "xml";', INDEX_HTML)
         self.assertIn('commandDownloadMode = "both";', INDEX_HTML)
-        self.assertIn("getSelectedXmlProducts(selectedFiles)", INDEX_HTML)
-        self.assertIn("buildObjectXmlExportUrl(querySession.dataProduct, file.objectId, querySession.project)", INDEX_HTML)
+        self.assertIn("getMatchingXmlProducts()", INDEX_HTML)
+        self.assertIn("buildObjectXmlExportUrl(querySession.dataProduct, product.objectId, querySession.project)", INDEX_HTML)
         self.assertIn('output: `data/${makeUniqueZipEntryName(file.fileName, index, usedDataNames)}`', INDEX_HTML)
-        self.assertIn('output: `xml/${makeUniqueZipEntryName(`${file.productId || file.objectId}.xml`, index, usedXmlNames)}`', INDEX_HTML)
+        self.assertIn('output: `xml/${makeUniqueZipEntryName(`${product.productId || product.objectId}.xml`, index, usedXmlNames)}`', INDEX_HTML)
         self.assertIn("dssget: false", INDEX_HTML)
         self.assertIn('if download["dssget"]:', INDEX_HTML)
         self.assertIn("if (download.dssget)", INDEX_HTML)
@@ -100,39 +100,57 @@ class QueryAndDownloadUiTest(unittest.TestCase):
         self.assertIn("updateSelectedDownloadCommand();", INDEX_HTML)
         self.assertIn('commandOutput.textContent = "Select files to generate a download command.";', INDEX_HTML)
 
-    def test_query_limits_products_server_side_then_chunks_file_lookup(self):
-        self.assertRegex(INDEX_HTML, r'id="queryChunkSize"[\s\S]*?value="[1-9][0-9]*"')
-        self.assertRegex(INDEX_HTML, r"const DEFAULT_QUERY_CHUNK_SIZE = [1-9][0-9]*;")
+    def test_query_uses_two_server_limited_dbview_requests(self):
+        self.assertNotIn('id="queryChunkSize"', INDEX_HTML)
         self.assertIn("function buildDbViewRequestUrl", INDEX_HTML)
         self.assertIn('targetUrl.searchParams.set("mainpref_numrows", String(maximumFiles));', INDEX_HTML)
-        self.assertIn("function extractDbViewObjectIds", INDEX_HTML)
-        self.assertIn("matchAll(/object_id=([0-9A-F]+)/gi)", INDEX_HTML)
-        self.assertIn("const MAX_OBJECTS_PER_PROXY_CHUNK = 48;", INDEX_HTML)
-        self.assertIn("const objectIdChunks = chunkItems(objectIds, Math.min(queryChunkSize, MAX_OBJECTS_PER_PROXY_CHUNK));", INDEX_HTML)
-        self.assertIn("const filesByUrl = new Map();", INDEX_HTML)
-        self.assertIn("async function fetchObjectXmlChunk", INDEX_HTML)
-        self.assertIn('operation: "resolve-object-xml-chunk"', INDEX_HTML)
-        self.assertIn("const chunkResult = await fetchObjectXmlChunk(", INDEX_HTML)
-        self.assertIn("chunkResult.files.forEach((file) => filesByUrl.set(file.url, file));", INDEX_HTML)
+        self.assertIn('targetUrl.searchParams.set("Exportselect", "NoDownload");', INDEX_HTML)
+        self.assertIn('`${dataProduct}.Header#GenericHeader`,', INDEX_HTML)
+        self.assertLess(
+            INDEX_HTML.index('`${dataProduct}.Header#GenericHeader`,'),
+            INDEX_HTML.index('`${dataProduct}.Header.ProductId#ObjectId`,'),
+        )
+        self.assertIn("function buildDbViewFileExportUrl", INDEX_HTML)
+        self.assertIn('targetUrl.searchParams.set("Exportselect", "FITS");', INDEX_HTML)
+        self.assertIn("function extractDbViewProducts", INDEX_HTML)
+        self.assertIn("function extractDbViewFileLinks", INDEX_HTML)
+        self.assertIn("const products = extractDbViewProducts(dbViewHtml);", INDEX_HTML)
+        self.assertIn("const files = extractDbViewFileLinks(fileListText);", INDEX_HTML)
+        self.assertIn("requestCount: 1", INDEX_HTML)
+        self.assertIn("querySession.requestCount = 2;", INDEX_HTML)
 
-    def test_query_does_not_poll_one_rest_job_per_product(self):
-        query_flow = INDEX_HTML.split("const objectIdChunks =", 1)[1].split("const files = Array.from", 1)[0]
+    def test_query_does_not_poll_or_export_xml_per_product(self):
+        query_flow = INDEX_HTML.split('form.addEventListener("submit"', 1)[1]
 
         self.assertNotIn("runAsyncEasRequest(", query_flow)
-        self.assertNotIn("objectIdChunk.map(", query_flow)
-        self.assertIn("for (let chunkIndex = 0; chunkIndex < objectIdChunks.length; chunkIndex += 1)", query_flow)
+        self.assertNotIn("fetchObjectXmlChunk(", query_flow)
+        self.assertNotIn("for (let chunkIndex", query_flow)
         self.assertNotIn("Promise.all", query_flow)
 
-    def test_query_renders_returned_files_after_each_sequential_batch(self):
+    def test_query_has_one_five_minute_deadline_and_keeps_intermediate_summary(self):
         self.assertIn("let queryInProgress = false;", INDEX_HTML)
+        self.assertIn("const QUERY_TIMEOUT_MS = 5 * 60 * 1000;", INDEX_HTML)
+        self.assertIn("function fetchTextBeforeDeadline", INDEX_HTML)
+        self.assertIn("const queryDeadline = queryStartedAt + QUERY_TIMEOUT_MS;", INDEX_HTML)
+        self.assertEqual(INDEX_HTML.count("queryDeadline,\n"), 2)
         self.assertIn("function renderDownloadResults(session, queryComplete = true)", INDEX_HTML)
-        self.assertIn("querySession.files = Array.from(filesByUrl.values());", INDEX_HTML)
         self.assertIn("renderDownloadResults(querySession, false);", INDEX_HTML)
-        self.assertIn("Resolving XML batches sequentially:", INDEX_HTML)
+        self.assertIn("Retrieving file links with optimized DbView export (request 2/2)", INDEX_HTML)
+        self.assertIn("Query exceeded five-minute limit", INDEX_HTML)
+
+    def test_large_result_list_is_added_with_one_document_fragment(self):
+        self.assertIn("const resultFragment = document.createDocumentFragment();", INDEX_HTML)
+        self.assertIn("resultFragment.appendChild(item);", INDEX_HTML)
+        self.assertIn("downloadList.appendChild(resultFragment);", INDEX_HTML)
 
     def test_proxy_error_identifies_stale_deployed_worker(self):
         self.assertIn("Deployed proxy Worker blocked", INDEX_HTML)
         self.assertIn("Deploy proxy-worker.js containing that host allowlist", INDEX_HTML)
+
+    def test_html_proxy_errors_are_reduced_to_useful_eas_exception_text(self):
+        self.assertIn("function summarizeProxyErrorResponse(responseText, fallbackText)", INDEX_HTML)
+        self.assertIn("/^Exception\\s*:/i.test(item)", INDEX_HTML)
+        self.assertIn("summarizeProxyErrorResponse(text, response.statusText)", INDEX_HTML)
 
     def test_stop_query_aborts_browser_work(self):
         self.assertIn("let activeQueryAbortController = null;", INDEX_HTML)
@@ -158,16 +176,15 @@ class QueryAndDownloadUiTest(unittest.TestCase):
         self.assertIn("async function downloadSelectedFiles()", INDEX_HTML)
         self.assertIn("const fileBlob = await fetchBlob(file.url, querySession.auth);", INDEX_HTML)
 
-    def test_selected_xml_download_uses_one_cus_export_per_selected_product(self):
+    def test_matching_xml_download_uses_one_cus_export_per_matching_product(self):
         self.assertIn("function buildObjectXmlExportUrl(dataProduct, objectId, project)", INDEX_HTML)
-        self.assertIn("objectId: String(file?.objectId || \"\").trim()", INDEX_HTML)
-        self.assertIn("async function downloadSelectedXmlFiles()", INDEX_HTML)
-        self.assertIn("new Map(", INDEX_HTML)
-        self.assertIn("buildObjectXmlExportUrl(querySession.dataProduct, file.objectId, querySession.project)", INDEX_HTML)
+        self.assertIn("async function downloadMatchingXmlFiles()", INDEX_HTML)
+        self.assertIn("const matchingProducts = getMatchingXmlProducts();", INDEX_HTML)
+        self.assertIn("buildObjectXmlExportUrl(querySession.dataProduct, product.objectId, querySession.project)", INDEX_HTML)
         self.assertIn("const outputName = `${safeDataProduct}-${timestamp}-xml.zip`;", INDEX_HTML)
 
-    def test_selected_xml_download_is_sequential(self):
-        self.assertIn("for (const [index, file] of selectedProducts.entries())", INDEX_HTML)
+    def test_matching_xml_download_is_sequential(self):
+        self.assertIn("for (const [index, product] of matchingProducts.entries())", INDEX_HTML)
         self.assertNotIn("XML_DOWNLOAD_CONCURRENCY", INDEX_HTML)
         self.assertNotIn("async function mapWithConcurrency", INDEX_HTML)
 
