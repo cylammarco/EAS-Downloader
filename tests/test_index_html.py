@@ -40,6 +40,22 @@ class QueryAndDownloadUiTest(unittest.TestCase):
         self.assertIn("directLink.href = file.url;", INDEX_HTML)
         self.assertIn('directLink.textContent = "Download link";', INDEX_HTML)
 
+    def test_dbview_query_uses_class_qualified_fields_and_separate_operators(self):
+        self.assertIn("function parseUserQueryConditions(rawQuery)", INDEX_HTML)
+        self.assertIn("const match = token.match(/^(.+?)(>=|<=|!=|=|>|<)(.*)$/);", INDEX_HTML)
+        self.assertIn("function appendDbViewUserQuery(searchParams, dataProduct, rawQuery)", INDEX_HTML)
+        self.assertIn('const qualifiedField = field.startsWith(`${dataProduct}.`) ? field : `${dataProduct}.${field}`;', INDEX_HTML)
+        self.assertIn('searchParams.append(`${qualifiedField}.op`, operator);', INDEX_HTML)
+        self.assertIn("appendDbViewUserQuery(targetUrl.searchParams, dataProduct, rawQuery);", INDEX_HTML)
+
+    def test_query_panel_shows_returned_rows_and_other_summary_values(self):
+        self.assertIn('id="queryReturnedRows"', INDEX_HTML)
+        self.assertIn('id="queryDownloadableFiles"', INDEX_HTML)
+        self.assertIn('id="queryProject"', INDEX_HTML)
+        self.assertIn('id="queryLimitStatus"', INDEX_HTML)
+        self.assertIn("function extractDbViewReturnedRowCount(htmlText)", INDEX_HTML)
+        self.assertIn("queryReturnedRows.textContent = String(session.returnedRowCount);", INDEX_HTML)
+
     def test_selected_file_command_defaults_to_python_and_can_toggle_to_shell(self):
         self.assertIn('class="command-format-label">Format</span>', INDEX_HTML)
         self.assertIn('id="commandFormatPythonBtn"', INDEX_HTML)
@@ -51,7 +67,7 @@ class QueryAndDownloadUiTest(unittest.TestCase):
         self.assertIn('let commandDownloadMode = "data";', INDEX_HTML)
         self.assertIn("function updateCommandFormatControls()", INDEX_HTML)
         self.assertIn("function buildCommandDownloadEntries(selectedFiles)", INDEX_HTML)
-        self.assertIn("function buildPythonDownloadCommand(downloads)", INDEX_HTML)
+        self.assertIn("function buildPythonDownloadScript(downloads)", INDEX_HTML)
         self.assertIn("function buildShellDownloadCommand(downloads)", INDEX_HTML)
         self.assertIn('headers["Pragma"] = "DSSGET"', INDEX_HTML)
         self.assertIn('EAS_USERNAME', INDEX_HTML)
@@ -68,6 +84,15 @@ class QueryAndDownloadUiTest(unittest.TestCase):
         self.assertIn("dssget: false", INDEX_HTML)
         self.assertIn('if download["dssget"]:', INDEX_HTML)
         self.assertIn("if (download.dssget)", INDEX_HTML)
+
+    def test_script_has_copy_button_and_no_shell_heredoc_wrapper(self):
+        self.assertIn('id="copyScriptBtn"', INDEX_HTML)
+        self.assertIn('copyScriptBtn.addEventListener("click", copySelectedDownloadScript);', INDEX_HTML)
+        self.assertIn("await writeClipboardText(copyableScript);", INDEX_HTML)
+        self.assertIn('"#!/usr/bin/env python3"', INDEX_HTML)
+        self.assertIn("dssget: download.dssget ? 1 : 0", INDEX_HTML)
+        self.assertNotIn("python3 - <<'PY'", INDEX_HTML)
+        self.assertRegex(INDEX_HTML, r"pre \{[\s\S]*?max-height: 360px;[\s\S]*?overflow: auto;")
 
     def test_results_start_selected_and_selection_populates_command(self):
         self.assertIn("checkbox.checked = true;", INDEX_HTML)
@@ -115,6 +140,10 @@ class QueryAndDownloadUiTest(unittest.TestCase):
         self.assertIn("activeQueryAbortController.abort();", INDEX_HTML)
         self.assertIn("signal,", INDEX_HTML)
         self.assertIn("if (isAbortError(error))", INDEX_HTML)
+        abort_handler = INDEX_HTML.split("if (isAbortError(error))", 1)[1].split("console.error", 1)[0]
+        self.assertNotIn("clearQueryResults();", abort_handler)
+        self.assertIn("querySession.stopped = true;", abort_handler)
+        self.assertIn("Partial results and generated script were kept.", abort_handler)
 
     def test_maximum_files_field_defaults_to_1000_and_limits_results(self):
         self.assertIn('<label for="maximumFiles">Maximum Number of Files</label>', INDEX_HTML)

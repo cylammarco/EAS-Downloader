@@ -239,6 +239,13 @@
         margin-top: 1rem;
       }
 
+      .command-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+      }
+
       .command-format {
         display: flex;
         align-items: center;
@@ -299,6 +306,27 @@
         color: var(--ink-soft);
       }
 
+      .query-summary {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 0.65rem;
+        margin-bottom: 0.85rem;
+      }
+
+      .query-summary-item {
+        display: grid;
+        gap: 0.15rem;
+        padding: 0.65rem 0.75rem;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fffefb;
+      }
+
+      .query-summary-label {
+        color: var(--ink-soft);
+        font-size: 0.78rem;
+      }
+
       .download-list {
         display: grid;
         gap: 0.5rem;
@@ -339,11 +367,12 @@
 
       pre {
         margin: 0.4rem 0 0;
+        max-height: 360px;
         padding: 0.85rem;
         background: #101a2c;
         color: #dde8ff;
         border-radius: 12px;
-        overflow-x: auto;
+        overflow: auto;
         font-family: "IBM Plex Mono", monospace;
         font-size: 0.87rem;
       }
@@ -374,6 +403,10 @@
 
         .download-link {
           grid-column: 2;
+        }
+
+        .query-summary {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
         }
       }
     </style>
@@ -511,6 +544,24 @@
         <section id="downloadPanel" class="download-panel" hidden aria-labelledby="downloadHeading">
           <h2 id="downloadHeading">Download results</h2>
           <p id="downloadSummary" class="download-summary"></p>
+          <div class="query-summary" aria-label="Query summary">
+            <div class="query-summary-item">
+              <span class="query-summary-label">Returned rows</span>
+              <strong id="queryReturnedRows">0</strong>
+            </div>
+            <div class="query-summary-item">
+              <span class="query-summary-label">Downloadable files</span>
+              <strong id="queryDownloadableFiles">0</strong>
+            </div>
+            <div class="query-summary-item">
+              <span class="query-summary-label">Project</span>
+              <strong id="queryProject">—</strong>
+            </div>
+            <div class="query-summary-item">
+              <span class="query-summary-label">Server limit</span>
+              <strong id="queryLimitStatus">Not reached</strong>
+            </div>
+          </div>
           <div class="actions">
             <button id="selectAllBtn" class="ghost-btn" type="button">Select All</button>
             <button id="clearSelectionBtn" class="ghost-btn" type="button">Clear Selection</button>
@@ -526,7 +577,10 @@
         </section>
 
         <div class="command">
-          <strong>Selected-file download command</strong>
+          <div class="command-header">
+            <strong>Selected-file download script</strong>
+            <button id="copyScriptBtn" class="ghost-btn" type="button" disabled>Copy Script</button>
+          </div>
           <div class="command-format" role="group" aria-label="Selected file command format">
             <span class="command-format-label">Format</span>
             <span class="format-toggle">
@@ -586,10 +640,15 @@
       const commandDownloadDataBtn = document.getElementById("commandDownloadDataBtn");
       const commandDownloadXmlBtn = document.getElementById("commandDownloadXmlBtn");
       const commandDownloadBothBtn = document.getElementById("commandDownloadBothBtn");
+      const copyScriptBtn = document.getElementById("copyScriptBtn");
       const togglePasswordBtn = document.getElementById("togglePassword");
       const downloadPanel = document.getElementById("downloadPanel");
       const downloadSummary = document.getElementById("downloadSummary");
       const downloadList = document.getElementById("downloadList");
+      const queryReturnedRows = document.getElementById("queryReturnedRows");
+      const queryDownloadableFiles = document.getElementById("queryDownloadableFiles");
+      const queryProject = document.getElementById("queryProject");
+      const queryLimitStatus = document.getElementById("queryLimitStatus");
       const selectAllBtn = document.getElementById("selectAllBtn");
       const clearSelectionBtn = document.getElementById("clearSelectionBtn");
       const downloadSelectedBtn = document.getElementById("downloadSelectedBtn");
@@ -616,6 +675,7 @@
       let activeQueryAbortController = null;
       let commandFormat = "python";
       let commandDownloadMode = "data";
+      let copyableScript = "";
 
       function updateStatus(message) {
         statusText.textContent = message;
@@ -840,30 +900,54 @@
         return parsed.toString();
       }
 
-      function appendOptionalUserQuery(searchParams, rawQuery) {
-        const normalizedQuery = String(rawQuery || "").trim().replace(/^[?&]+/, "");
+      function parseUserQueryConditions(rawQuery) {
+        const normalizedQuery = String(rawQuery || "")
+          .replace(/&(?:#x20|#32|nbsp);/gi, " ")
+          .replace(/&amp;/gi, "&")
+          .trim()
+          .replace(/^[?&]+/, "");
         if (!normalizedQuery) {
-          return;
+          return [];
         }
 
-        normalizedQuery.split("&").forEach((part) => {
+        return normalizedQuery.split("&").reduce((conditions, part) => {
           const token = part.trim();
           if (!token) {
-            return;
+            return conditions;
           }
 
-          const separatorIndex = token.indexOf("=");
-          if (separatorIndex <= 0) {
-            throw new Error(`Invalid query token: ${token}. Use key=value pairs separated by &.`);
+          const match = token.match(/^(.+?)(>=|<=|!=|=|>|<)(.*)$/);
+          if (!match) {
+            throw new Error(`Invalid query token: ${token}. Use field/operator/value expressions separated by &.`);
           }
 
-          const key = token.slice(0, separatorIndex).trim();
-          const value = token.slice(separatorIndex + 1);
-          if (!key) {
+          const field = match[1].trim();
+          const operator = match[2];
+          const value = match[3].trim();
+          if (!field) {
             throw new Error(`Invalid query token: ${token}. Query keys cannot be empty.`);
           }
+          if (!value) {
+            throw new Error(`Invalid query token: ${token}. Query values cannot be empty.`);
+          }
 
-          searchParams.append(key, value);
+          conditions.push({ field, operator, value });
+          return conditions;
+        }, []);
+      }
+
+      function appendOptionalUserQuery(searchParams, rawQuery) {
+        parseUserQueryConditions(rawQuery).forEach(({ field, operator, value }) => {
+          const restOperatorSuffix = operator === "=" ? "" : operator.charAt(0);
+          searchParams.append(`${field}${restOperatorSuffix}`, value);
+        });
+      }
+
+      function appendDbViewUserQuery(searchParams, dataProduct, rawQuery) {
+        parseUserQueryConditions(rawQuery).forEach(({ field, operator, value }) => {
+          const qualifiedField = field.startsWith(`${dataProduct}.`) ? field : `${dataProduct}.${field}`;
+          searchParams.append(qualifiedField, value);
+          searchParams.append(`${qualifiedField}.op`, operator);
         });
       }
 
@@ -905,7 +989,7 @@
 
       function buildDbViewRequestUrl(dataProduct, rawQuery, project, maximumFiles) {
         const targetUrl = new URL(DB_VIEW_URL);
-        appendOptionalUserQuery(targetUrl.searchParams, rawQuery);
+        appendDbViewUserQuery(targetUrl.searchParams, dataProduct, rawQuery);
         targetUrl.searchParams.set("project", project);
         targetUrl.searchParams.set("mainpref_numrows", String(maximumFiles));
         targetUrl.searchParams.set("class_str", dataProduct);
@@ -1066,6 +1150,15 @@
         return objectIds;
       }
 
+      function extractDbViewReturnedRowCount(htmlText) {
+        const match = String(htmlText || "").match(/Shown:\s*([\d,]+)\s+rows?/i);
+        if (!match) {
+          return null;
+        }
+        const count = Number(match[1].replace(/,/g, ""));
+        return Number.isSafeInteger(count) ? count : null;
+      }
+
       function clearQueryResults() {
         if (downloadInProgress) {
           return;
@@ -1074,11 +1167,17 @@
         downloadPanel.hidden = true;
         downloadList.replaceChildren();
         downloadSummary.textContent = "";
+        queryReturnedRows.textContent = "0";
+        queryDownloadableFiles.textContent = "0";
+        queryProject.textContent = "—";
+        queryLimitStatus.textContent = "Not reached";
         downloadSelectedBtn.disabled = true;
         downloadSelectedBtn.textContent = "Download Selected";
         downloadSelectedXmlBtn.disabled = true;
         downloadSelectedXmlBtn.textContent = "Download Selected XML";
         updateCommandFormatControls();
+        copyableScript = "";
+        copyScriptBtn.disabled = true;
         commandOutput.textContent = "Select files to generate a download command.";
       }
 
@@ -1120,6 +1219,7 @@
         commandDescription.textContent = pythonSelected
           ? `If you would like to download ${downloadDescription} again, use the Python script below.`
           : `If you would like to download ${downloadDescription} again, use the shell command below.`;
+        copyScriptBtn.disabled = !copyableScript || downloadInProgress || queryInProgress;
       }
 
       function getSelectedXmlProducts(selectedFiles = getSelectedFiles()) {
@@ -1160,11 +1260,18 @@
         return entries;
       }
 
-      function buildPythonDownloadCommand(downloads) {
-        const downloadsJson = JSON.stringify(downloads, null, 2);
+      function buildPythonDownloadScript(downloads) {
+        const downloadsLiteral = JSON.stringify(
+          downloads.map((download) => ({
+            ...download,
+            dssget: download.dssget ? 1 : 0,
+          })),
+          null,
+          2
+        );
         return [
-          "# To download these selected items again, run this script after exporting EAS_USERNAME and EAS_PASSWORD.",
-          "python3 - <<'PY'",
+          "#!/usr/bin/env python3",
+          "# Run after exporting EAS_USERNAME and EAS_PASSWORD.",
           "import base64",
           "import os",
           "from pathlib import Path",
@@ -1173,7 +1280,7 @@
           'username = os.environ["EAS_USERNAME"]',
           'password = os.environ["EAS_PASSWORD"]',
           'authorization = "Basic " + base64.b64encode(f"{username}:{password}".encode("utf-8")).decode("ascii")',
-          `downloads = ${downloadsJson}`,
+          `downloads = ${downloadsLiteral}`,
           'output_dir = Path("eas-downloads")',
           "",
           "for download in downloads:",
@@ -1186,7 +1293,6 @@
           "    with urlopen(request) as response, output_path.open(\"wb\") as output:",
           "        output.write(response.read())",
           "    print(f\"Downloaded {output_path}\")",
-          "PY",
         ].join("\n");
       }
 
@@ -1215,23 +1321,65 @@
       }
 
       function updateSelectedDownloadCommand(selectedFiles = getSelectedFiles()) {
-        updateCommandFormatControls();
         if (!querySession) {
+          copyableScript = "";
           commandOutput.textContent = "Select files to generate a download command.";
+          updateCommandFormatControls();
           return;
         }
         if (!selectedFiles.length) {
+          copyableScript = "";
           commandOutput.textContent = "Select at least one file to generate a download command.";
+          updateCommandFormatControls();
           return;
         }
         const downloads = buildCommandDownloadEntries(selectedFiles);
         if (!downloads.length) {
+          copyableScript = "";
           commandOutput.textContent = "No selected EAS XML exports are available for this command.";
+          updateCommandFormatControls();
           return;
         }
-        commandOutput.textContent = commandFormat === "python"
-          ? buildPythonDownloadCommand(downloads)
+        copyableScript = commandFormat === "python"
+          ? buildPythonDownloadScript(downloads)
           : buildShellDownloadCommand(downloads);
+        commandOutput.textContent = copyableScript;
+        updateCommandFormatControls();
+      }
+
+      async function writeClipboardText(text) {
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(text);
+          return;
+        }
+
+        const copyArea = document.createElement("textarea");
+        copyArea.value = text;
+        copyArea.setAttribute("readonly", "");
+        copyArea.style.position = "fixed";
+        copyArea.style.opacity = "0";
+        document.body.appendChild(copyArea);
+        copyArea.select();
+        const copied = document.execCommand("copy");
+        copyArea.remove();
+        if (!copied) {
+          throw new Error("Browser denied clipboard access.");
+        }
+      }
+
+      async function copySelectedDownloadScript() {
+        if (!copyableScript) {
+          updateError("Select at least one file before copying the script.");
+          return;
+        }
+
+        try {
+          await writeClipboardText(copyableScript);
+          updateError("");
+          updateStatus(`${commandFormat === "python" ? "Python script" : "Shell command"} copied to clipboard.`);
+        } catch (error) {
+          updateError(error.message || String(error));
+        }
       }
 
       function updateDownloadSelection() {
@@ -1268,12 +1416,21 @@
       function renderDownloadResults(session, queryComplete = true) {
         downloadList.replaceChildren();
         const resultCount = session.files.length;
-        if (!queryComplete) {
+        queryReturnedRows.textContent = String(session.returnedRowCount);
+        queryDownloadableFiles.textContent = String(resultCount);
+        queryProject.textContent = session.project;
+        queryLimitStatus.textContent = session.reachedMaximum
+          ? `Reached ${session.maximumFiles}`
+          : "Not reached";
+
+        if (session.stopped) {
+          downloadSummary.textContent = `Query stopped after ${session.processedChunkCount}/${session.totalChunkCount} XML batches. Partial results and script kept.`;
+        } else if (!queryComplete) {
           downloadSummary.textContent = `Resolving XML batches sequentially: ${session.processedChunkCount}/${session.totalChunkCount} complete; ${resultCount} downloadable file${resultCount === 1 ? "" : "s"} found so far.`;
         } else {
           downloadSummary.textContent = session.reachedMaximum
-            ? `EAS selected first ${session.maximumFiles} matching products server-side; ${resultCount} downloadable files found. All files selected.`
-            : `${resultCount} downloadable file${resultCount === 1 ? "" : "s"} found. All files selected.`;
+            ? `EAS returned first ${session.maximumFiles} matching rows; ${resultCount} downloadable files found. All files selected.`
+            : `EAS returned ${session.returnedRowCount} matching row${session.returnedRowCount === 1 ? "" : "s"}; ${resultCount} downloadable file${resultCount === 1 ? "" : "s"} found. All files selected.`;
         }
 
         session.files.forEach((file, index) => {
@@ -1795,6 +1952,7 @@
 
       downloadSelectedBtn.addEventListener("click", downloadSelectedFiles);
       downloadSelectedXmlBtn.addEventListener("click", downloadSelectedXmlFiles);
+      copyScriptBtn.addEventListener("click", copySelectedDownloadScript);
 
       stopQueryBtn.addEventListener("click", () => {
         if (!activeQueryAbortController) {
@@ -1836,19 +1994,15 @@
           const dbViewRequestUrl = buildDbViewRequestUrl(dataProduct, query, project, maximumFiles);
 
           updateStatus(`Requesting first ${maximumFiles} matching products from EAS...`);
-          const objectIds = extractDbViewObjectIds(
-            await fetchText(dbViewRequestUrl, auth, queryAbortController.signal)
-          );
-
-          if (!objectIds.length) {
-            throw new Error("Query returned no matching products.");
-          }
+          const dbViewHtml = await fetchText(dbViewRequestUrl, auth, queryAbortController.signal);
+          const objectIds = extractDbViewObjectIds(dbViewHtml);
+          const returnedRowCount = extractDbViewReturnedRowCount(dbViewHtml) ?? objectIds.length;
 
           const objectIdChunks = chunkItems(objectIds, Math.min(queryChunkSize, MAX_OBJECTS_PER_PROXY_CHUNK));
           const filesByUrl = new Map();
           const chunkErrors = [];
           let processedChunkCount = 0;
-          const reachedMaximum = objectIds.length === maximumFiles;
+          const reachedMaximum = returnedRowCount >= maximumFiles;
           querySession = {
             auth,
             project,
@@ -1856,13 +2010,19 @@
             query,
             queryChunkSize,
             maximumFiles,
+            returnedRowCount,
             reachedMaximum,
             processedChunkCount,
             totalChunkCount: objectIdChunks.length,
             files: [],
           };
-          queryInProgress = true;
-          renderDownloadResults(querySession, false);
+          queryInProgress = objectIds.length > 0;
+          renderDownloadResults(querySession, !objectIds.length);
+
+          if (!objectIds.length) {
+            updateStatus("Query complete. EAS returned 0 matching rows.");
+            return;
+          }
 
           for (let chunkIndex = 0; chunkIndex < objectIdChunks.length; chunkIndex += 1) {
             throwIfAborted(queryAbortController.signal);
@@ -1901,14 +2061,17 @@
           }
           updateStatus(
             reachedMaximum
-              ? `EAS selected first ${objectIds.length} matching products server-side. Found ${files.length} DSS file${files.length === 1 ? "" : "s"} in ${processedChunkCount} chunk${processedChunkCount === 1 ? "" : "s"}.${partialFailureSuffix}`
-              : `Query complete. Found ${files.length} DSS file${files.length === 1 ? "" : "s"} from ${objectIds.length} matching products in ${processedChunkCount} chunk${processedChunkCount === 1 ? "" : "s"}.${partialFailureSuffix}`
+              ? `EAS returned first ${returnedRowCount} matching rows server-side. Found ${files.length} DSS file${files.length === 1 ? "" : "s"} in ${processedChunkCount} chunk${processedChunkCount === 1 ? "" : "s"}.${partialFailureSuffix}`
+              : `Query complete. Found ${files.length} DSS file${files.length === 1 ? "" : "s"} from ${returnedRowCount} matching rows in ${processedChunkCount} chunk${processedChunkCount === 1 ? "" : "s"}.${partialFailureSuffix}`
           );
         } catch (error) {
           if (isAbortError(error)) {
-            clearQueryResults();
+            if (querySession) {
+              querySession.stopped = true;
+              renderDownloadResults(querySession, false);
+            }
             updateError("");
-            updateStatus("Query stopped. Already submitted EAS jobs may still finish on server, but this page stopped waiting.");
+            updateStatus("Query stopped. Partial results and generated script were kept.");
             return;
           }
           console.error("EAS query request failed", {

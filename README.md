@@ -11,9 +11,11 @@ Single-page static web app [https://cylammarco.github.io/EAS-Downloader/](https:
 - Uses a project dropdown with: `TEST`, `EUCLID`, `ALL`
 - Calls EAS through the configured Cloudflare Worker proxy before running queries
 - Requests at most the configured number of matching products from DbView before resolving file names
-- Resolves `FileName` values from EAS XML exports in configurable proxy chunks (default: 100 products)
+- Converts REST-style query expressions (including `>=`, `<=`, and `!=`) to DbView's class-qualified field and operator parameters
+- Resolves `FileName` values from EAS XML exports in configurable proxy chunks (default: 48 products)
 - Concatenates returned file links from every chunk
 - Stops at the server-selected product limit (default: 1000); it does not first retrieve every matching product
+- Shows returned-row count, downloadable-file count, project, and server-limit status
 - Renders each result as an actual DSS download URL: `https://euclidsoc.esac.esa.int/<FileName>`
 - Lets users select matching DSS files, then packages selected files in one zip
 - Generates Python or shell download commands for selected DSS files
@@ -64,6 +66,9 @@ After query results appear, every file is selected by default. The **Selected-fi
 **Format** (Python or shell) and **Download** (Data, XML, or Both) controls. XML commands use the selected products'
 EAS `/XML` exports; data commands use DSS URLs with `Pragma: DSSGET`. Both require `EAS_USERNAME` and `EAS_PASSWORD`.
 The command updates whenever selection or either control changes.
+Use **Copy Script** to copy the generated Python script or shell command. Python output is a standalone script (no shell
+heredoc wrapper), and the script panel has a fixed maximum height with its own scrollbar. Stopping a query preserves any
+partial results and generated script already shown.
 
 The command-line Python tool selects output with `--download`:
 
